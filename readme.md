@@ -101,7 +101,7 @@ This will use the contents of `/path/to/prefix.txt` as the prefix for the output
 
 `thisismy` is licensed under the MIT License. See [LICENSE](LICENSE) for more information.
 
-##
+## Command Line Terminal Example
 
 ```
 $ thisismy hello-world.js goodbye-world.js -c
