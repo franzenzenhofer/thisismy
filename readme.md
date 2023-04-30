@@ -101,6 +101,43 @@ This will use the contents of `/path/to/prefix.txt` as the prefix for the output
 
 `thisismy` is licensed under the MIT License. See [LICENSE](LICENSE) for more information.
 
+##
+
+```$ thisismy hello-world.js goodbye-world.js -c
+
+---
+
+This is my current hello-world.js
+
+---
+
+//my awesome hello world file
+console.log("hello world");
+
+---
+This is the end of hello-world.js
+
+---
+
+---
+
+This is my current goodbye-world.js
+
+---
+
+//another comment
+console.log("hello world");
+//this is also comment
+
+---
+This is the end of goodbye-world.js
+
+---
+
+Output copied to clipboard
+```
+
+
 
 
 
