@@ -1,0 +1,22 @@
+{
+  "name": "thisismy",
+  "version": "1.0.0",
+  "description": "Prints the content of files with a prefix",
+  "main": "thisismy.js",
+  "type": "module",
+  "bin": {
+    "thisismy": "thisismy.js"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "chalk": "^5.2.0",
+    "clipboardy": "^3.0.0",
+    "command-line-args": "^5.2.1",
+    "command-line-usage": "^7.0.1",
+    "commander": "^10.0.1"
+  }
+}

@@ -1,0 +1,1 @@
+Create bug free, perfect code with modern js. No explainations. Just code with necessary comments. 
