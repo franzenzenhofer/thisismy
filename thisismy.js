@@ -83,8 +83,8 @@ function printFileContents(filename, options) {
 
   const prefixedContents = prefix + coloredHeader + coloredContents + coloredFooter;
   if (!options.silent) {
-    console.log(`${options.prefix} ${filename}:`);
-    console.log(prefixedContents);
+    //console.log(`${options.prefix} ${filename}:`);
+    //console.log(prefixedContents);
   }
 
   return prefixedContents;
@@ -123,10 +123,12 @@ function run() {
   
   options.prefix = options.prefix || '';
   
-  let output = '';
+  let outputArr = [];
   options.file.forEach((filename) => {
-    output += printFileContents(filename, options);
+    const contents = printFileContents(filename, options);
+    outputArr.push(contents);
   });
+  const output = outputArr.join('');
 
   if (!options.silent) {
     console.log(output);
