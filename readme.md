@@ -103,7 +103,8 @@ This will use the contents of `/path/to/prefix.txt` as the prefix for the output
 
 ##
 
-```$ thisismy hello-world.js goodbye-world.js -c
+```
+$ thisismy hello-world.js goodbye-world.js -c
 
 ---
 
