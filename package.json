@@ -1,6 +1,6 @@
 {
   "name": "thisismy",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Prints the content of files with a prefix",
   "main": "thisismy.js",
   "type": "module",

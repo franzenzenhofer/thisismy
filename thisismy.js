@@ -157,8 +157,8 @@ async function printFileContents(filename, options) {
 
   if (filename.startsWith('http')) {
     contents = await fetchURL(filename);
-    let header = '\n\nThis is the current ' + filename + '\n\n';
-    let footer = '\n\nThis is the end of ' + filename + '\n\n';
+    header = '\n\nThis is the current ' + filename + '\n\n';
+    footer = '\n\nThis is the end of ' + filename + '\n\n';
   } else {
     contents = fs.readFileSync(filename, 'utf8');
   }
