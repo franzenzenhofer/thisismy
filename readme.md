@@ -6,7 +6,7 @@ Directed by Franz Enzenhofer.
 
 ## What does it do?
 
-`thisismy` concatinats files, removes unnecessary whitespace,  prefixes it with "This is my current %filename%:" and pushes it to the clipboard (or elsewhere). Also works with online resources. 
+`thisismy` concatinats files, removes unnecessary whitespace,  prefixes it with "This is my current %filename%:" and pushes it to the clipboard (or elsewhere). Also works with online resources. Intended use is ChatGPT prompts with lots of code. 
 
 ## Tell me more
 
