@@ -178,7 +178,6 @@ Whenever you run Thisismy in the same directory, it will look for a `thisismy.js
 
 ## Notes
 
-- If you run Thisismy in a different directory, it will not use the `thisismy.json` file in the current directory. Instead, it will use the default values for all the arguments.
 - If you want to update the defaults in the `thisismy.json` file, simply run Thisismy with the new arguments and the file will be updated with the new values.
 
 
