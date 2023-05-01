@@ -6,27 +6,100 @@ import commandLineArgs from 'command-line-args';
 import commandLineUsage from 'command-line-usage';
 import chalk from 'chalk';
 
+import fetch from 'node-fetch';
+import { JSDOM } from 'jsdom';
+import { Readability } from '@mozilla/readability';
+
+
 
 const optionDefinitions = [
   { name: 'copy', alias: 'c', type: Boolean, description: 'Copy output to clipboard' },
+  { name: 'tiny', alias: 't', type: Boolean, description: 'Removes double whitespaces from the read files.' },
   { name: 'file', multiple: true, defaultOption: true, type: String, description: 'List of files to read' },
   { name: 'prefix', alias: 'p', type: String, description: 'Prefix for the output. Can be string of file.' },
   { name: 'output', alias: 'o', type: String, description: 'Write output to a file' },
   { name: 'help', alias: 'h', type: Boolean, description: 'Print this usage guide.' },
-  { name: 'verbose', alias: 'v', type: Boolean, description: 'Verbose output' },
   { name: 'silent', alias: 's', type: Boolean, description: 'Silent output' },
   { name: 'debug', alias: 'd', type: Boolean, description: 'Debug mode' },
   { name: 'version', alias: 'V', type: Boolean, description: 'Print the version number and exit.' },
   { name: 'license', alias: 'l', type: Boolean, description: 'Print the license and exit.' },
+  { name: 'noColor', alias: 'n', type: Boolean, description: 'Disable colorized output' }, // New option definition
 ];
 
+async function run() {
+  const options = commandLineArgs(optionDefinitions);
+
+  if (options.version) {
+    getVersion();
+    return;
+  }
+
+  if (options.license) {
+    getLicense();
+    return;
+  }
+
+  if (options.help) {
+    printUsage();
+    return;
+  }
+  
+  if (!options.file || options.file.length === 0) {
+    console.error('Error: No file specified');
+    printUsage();
+    return;
+  }
+  
+  if (options.debug) {
+    console.log('Options:', options);
+  }
+  
+  options.prefix = options.prefix || '';
+  
+  let outputArr = [];
+  await Promise.all(options.file.map(async (filename) => {
+    const contents = await printFileContents(filename, options);
+    outputArr.push(contents);
+  }));
+  const output = outputArr.join('');
+
+  if (!options.silent) {
+    console.log(output);
+  }
+
+  if (options.output) {
+    fs.writeFileSync(options.output, output);
+    if (options.noColor) {
+      console.log(`Output written to ${options.output}`);
+    } else {
+      console.log(chalk.yellow(`Output written to ${options.output}`));
+    }
+  }
+  
+  if (options.copy) {
+    clipboardy.writeSync(output);
+    if (options.noColor) {
+      console.log('Output copied to clipboard');
+    } else {
+      console.log(chalk.yellow('Output copied to clipboard'));
+    }
+  }
+  
+}
+
+
+
 function getVersion() {
-  console.log('thisismy v1.0.0');
+  const packageInfo = JSON.parse(fs.readFileSync('./package.json', 'utf8'));
+  console.log(`thisismy ${packageInfo.version}`);
 }
 
 function getLicense() {
   console.log('MIT License');
 }
+
+
+
 
 function printUsage() {
   const usage = commandLineUsage([
@@ -63,13 +136,41 @@ function printUsage() {
   console.log(usage);
 }
 
-function printFileContents(filename, options) {
-  const contents = fs.readFileSync(filename, 'utf8');
+function fetchURL(url) {
+  return fetch(url)
+    .then((response) => response.text())
+    .then((html) => {
+      const doc =  new JSDOM(html);
+      const reader = new Readability(doc.window.document);
+      const article = reader.parse();
+      const content = article.textContent;
+      return content;
+    })
+    .catch((error) => console.error(error));
+}
 
-  const header = '\n\n---\nThis is my current ' + filename + '\n---\n\n';
-  const footer = '\n\n---\nThis is the end of ' + filename + '\n';
+async function printFileContents(filename, options) {
+  let contents = '';
 
-  const colorize = (str, color) => options.silent ? str : color(str);
+  let header = '\n\nThis is my current ' + filename + '\n\n';
+  let footer = '\n\nThis is the end of ' + filename + '\n\n';
+
+  if (filename.startsWith('http')) {
+    contents = await fetchURL(filename);
+    let header = '\n\nThis is the current ' + filename + '\n\n';
+    let footer = '\n\nThis is the end of ' + filename + '\n\n';
+  } else {
+    contents = fs.readFileSync(filename, 'utf8');
+  }
+
+  if (options.tiny) {
+    contents = contents.replace(/[\s\n]+/g, ' ').trim();
+  }
+
+
+
+  const colorize = (str, color) => options.silent ? str : options.noColor ? str : color(str);
+
 
   const shouldColorize = !options.copy && !options.output && !options.c;
   const coloredContents = shouldColorize ? colorize(contents, chalk.green) : contents;
@@ -83,8 +184,8 @@ function printFileContents(filename, options) {
 
   const prefixedContents = prefix + coloredHeader + coloredContents + coloredFooter;
   if (!options.silent) {
-    //console.log(`${options.prefix} ${filename}:`);
-    //console.log(prefixedContents);
+    console.log(`${options.prefix} ${filename}:`);
+    console.log(prefixedContents);
   }
 
   return prefixedContents;
@@ -92,58 +193,4 @@ function printFileContents(filename, options) {
 
 
 
-
-function run() {
-  const options = commandLineArgs(optionDefinitions);
-
-  if (options.version) {
-    getVersion();
-    return;
-  }
-
-  if (options.license) {
-    getLicense();
-    return;
-  }
-
-  if (options.help) {
-    printUsage();
-    return;
-  }
-  
-  if (!options.file || options.file.length === 0) {
-    console.error('Error: No file specified');
-    printUsage();
-    return;
-  }
-  
-  if (options.debug) {
-    console.log('Options:', options);
-  }
-  
-  options.prefix = options.prefix || '';
-  
-  let outputArr = [];
-  options.file.forEach((filename) => {
-    const contents = printFileContents(filename, options);
-    outputArr.push(contents);
-  });
-  const output = outputArr.join('');
-
-  if (!options.silent) {
-    console.log(output);
-  }
-
-  if (options.output) {
-    fs.writeFileSync(options.output, output);
-    console.log(chalk.yellow(`Output written to ${options.output}`));
-  }
-  
-  if (options.copy) {
-    clipboardy.writeSync(output);
-    console.log(chalk.yellow('Output copied to clipboard'));
-  }
-  
-}
-
-run();
+await run();

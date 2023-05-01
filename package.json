@@ -13,10 +13,14 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@mozilla/readability": "^0.4.4",
     "chalk": "^5.2.0",
     "clipboardy": "^3.0.0",
     "command-line-args": "^5.2.1",
     "command-line-usage": "^7.0.1",
-    "commander": "^10.0.1"
+    "commander": "^10.0.1",
+    "jsdom": "^21.1.1",
+    "node-fetch": "^3.3.1",
+    "xmldom": "^0.6.0"
   }
 }
