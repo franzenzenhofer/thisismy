@@ -10,7 +10,7 @@ Directed by Franz Enzenhofer.
 
 ## What does it solve?
 
-Coding with ChatGPT quite fast ends up with copy&paste-ing again and again multiple files as prompts prefixed with "This is my current %file%" into the ChatGPT textbox. Same with online ressources. This a) make one **crazy over time** and b) **wastes lots of time** and c) **wastes tokens** as unnecessary stuff (mostly whitespaces and boilerplate from the webpages) ends up in there. `thisismy` solves this. 
+**Coding with ChatGPT** quite fast ends up with **copy&paste-ing again and again** multiple files as prompts prefixed with "This is my current %file%" into the ChatGPT textbox. Same with online ressources. This a) make one **crazy over time** and b) **wastes lots of time** and c) **wastes tokens** as unnecessary stuff (mostly whitespaces and boilerplate from the webpages) ends up in there. `thisismy` solves this. 
 
 
 ## Tell me more
