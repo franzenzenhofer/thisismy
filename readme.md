@@ -8,6 +8,11 @@ Directed by Franz Enzenhofer.
 
 `thisismy` concatinats files, removes unnecessary whitespace,  prefixes it with "This is my current %filename%:" and pushes it to the clipboard (or elsewhere). Also works with online resources. Intended use is ChatGPT prompts with lots of code and docs. 
 
+## What does it solve?
+
+Coding with ChatGPT quite fast ends up with copy&paste-ing again and again multiple files as prompts prefixed with "This is my current %file%" into the ChatGPT textbox. Same with online ressources. This a) make one **crazy over time** and b) **wastes lots of time** and c) **wastes tokens** as unnecessary stuff (mostly whitespaces and boilerplate from the webpages) ends up in there. `thisismy` solves this. 
+
+
 ## Tell me more
 
 `thisismy` is a command-line utility designed to simplify the process of creating prompts for ChatGPT. With `thisismy`, you can print the contents of one or more files or online resources to the terminal, copy them to the clipboard and whitespace reduce them to save tokens. I.e.:
