@@ -5,7 +5,11 @@
 `thisismy -c -t -p "ChatGPT check this code for the best practices outlined in the online ressource." file1.js file2.js http://example.com/index.html
 ` 
 
-This command will copy (`-c`) the contents of `file1.js` and `file2.js` and the *main content* of `http://example.com/index.html` to the *clipboard*, with *double whitespaces removed* (`-t`). Each time the output is prefixed with "`This is my current %file%`" and "`This is the current %url%`". The whole response is *prefixed* (`-p`) with the defined prefix string. 
+This command will copy (`-c`) the contents of `file1.js` and `file2.js` and the *main content* of `http://example.com/index.html` to the **clipboard**, with **double whitespaces removed** (`-t`). Each time the output is prefixed with "`This is my current %file%`" and "`This is the current %url%`". The whole response is **prefixed** (`-p`) with the defined prefix string. 
+
+![Preview 1](./preview-1.png)
+
+![Preview 2](./preview-2.png)
 
 
 ## Installation 
