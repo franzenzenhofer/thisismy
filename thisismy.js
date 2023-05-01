@@ -10,6 +10,9 @@ import fetch from 'node-fetch';
 import { JSDOM } from 'jsdom';
 import { Readability } from '@mozilla/readability';
 
+import puppeteer from 'puppeteer';
+
+
 
 
 const optionDefinitions = [
@@ -160,17 +163,58 @@ function printUsage() {
   console.log(usage);
 }
 
-function fetchURL(url) {
-  return fetch(url)
-    .then((response) => response.text())
-    .then((html) => {
-      const doc =  new JSDOM(html);
-      const reader = new Readability(doc.window.document);
-      const article = reader.parse();
-      const content = article.textContent;
-      return content;
-    })
-    .catch((error) => console.error(error));
+const fetchOptions = {
+  headers: {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/84.0.4147.105 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.5',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Connection': 'keep-alive',
+    'Upgrade-Insecure-Requests': '1'
+  }
+};
+
+
+async function fetchURL(url, fetchOptions, js = false) {
+  if(js === false) {
+    return fetch(url, fetchOptions)
+      .then((response) => response.text())
+      .then((html) => {
+        const doc =  new JSDOM(html);
+        const reader = new Readability(doc.window.document);
+        const article = reader.parse();
+        if(!article) {
+          return fetchURL(url, fetchOptions, true);
+        }
+        let content = article.textContent;
+        if(!content) {
+          content = article.content;
+        }
+        if(!content) {
+          content = html;
+        }
+        return content;
+      })
+      .catch((error) => console.error(error));
+  }
+  else {
+    const browser = await puppeteer.launch();
+    const page = await browser.newPage();
+    await page.goto(url, { waitUntil: 'networkidle2' });
+    const html = await page.content();
+    await browser.close();
+    const doc =  new JSDOM(html);
+    const reader = new Readability(doc.window.document);
+    const article = reader.parse();
+    let content = article.textContent;
+    if(!content) {
+      content = article.content;
+    }
+    if(!content) {
+      content = html;
+    }
+    return content;
+  }
 }
 
 async function printFileContents(filename, options) {
