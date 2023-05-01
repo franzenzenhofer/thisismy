@@ -4,6 +4,12 @@ Coded by ChatGPT V4.
 
 Directed by Franz Enzenhofer.
 
+## What does it do?
+
+`thisismy` concatinats files, removes unnecessary whitespace,  prefixes it with "This is my current %filename%:" and pushes it to the clipboard (or elsewhere). Also works with online resources. 
+
+## Tell me more
+
 `thisismy` is a command-line utility designed to simplify the process of creating prompts for ChatGPT. With `thisismy`, you can print the contents of one or more files or online resources to the terminal, copy them to the clipboard and whitespace reduce them to save tokens. I.e.:
 
 `thisismy -c -t -p "ChatGPT check this code for the best practices outlined in the online ressource." file1.js file2.js http://example.com/index.html
