@@ -142,46 +142,49 @@ thisismy -c -t -p prefix.txt file1.txt file2.txt http://example.com/index.html
 This will print the contents of `file1.txt`, `file2.txt`, and the online resource with double whitespaces removed and a prefix of the contents of `prefix.txt`. The output will also be copied to the clipboard.
 
 
+Sure, here's an example README.md for the `-b` backup feature you described:
+
+# Thisismy Backup Feature
+
+This is a new feature added to Thisismy that allows you to backup your current arguments to a JSON file and use those values as defaults whenever you run Thisismy in the same directory.
+
+## How to Use
+
+To use this feature, simply add the `-b` or `--backup` option when running Thisismy. For example:
+
+```
+$ thisismy -bct file.txt
+```
+
+This will create a `thisismy.json` file in the current directory with the current arguments used for the prompt. The contents of the file will look like this:
+
+```json
+{
+  "copy": true,
+  "tiny": true,
+  "file": ["file.txt"],
+  "prefix": "",
+  "output": "",
+  "help": false,
+  "silent": false,
+  "debug": false,
+  "version": false,
+  "license": false,
+  "noColor": false
+}
+```
+
+Whenever you run Thisismy in the same directory, it will look for a `thisismy.json` file and use the values there as the defaults. You can still override these defaults by passing in new arguments when running Thisismy.
+
+## Notes
+
+- If you run Thisismy in a different directory, it will not use the `thisismy.json` file in the current directory. Instead, it will use the default values for all the arguments.
+- If you want to update the defaults in the `thisismy.json` file, simply run Thisismy with the new arguments and the file will be updated with the new values.
+
+
 ## License
 
 `thisismy` is licensed under the MIT License. See [LICENSE](LICENSE) for more information.
-
-## Command Line Terminal Example
-
-```
-$ thisismy hello-world.js goodbye-world.js -c
-
----
-
-This is my current hello-world.js
-
----
-
-//my awesome hello world file
-console.log("hello world");
-
----
-This is the end of hello-world.js
-
----
-
----
-
-This is my current goodbye-world.js
-
----
-
-//another comment
-console.log("hello world");
-//this is also comment
-
----
-This is the end of goodbye-world.js
-
----
-
-Output copied to clipboard
-```
 
 
 

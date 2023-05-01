@@ -23,11 +23,35 @@ const optionDefinitions = [
   { name: 'debug', alias: 'd', type: Boolean, description: 'Debug mode' },
   { name: 'version', alias: 'V', type: Boolean, description: 'Print the version number and exit.' },
   { name: 'license', alias: 'l', type: Boolean, description: 'Print the license and exit.' },
-  { name: 'noColor', alias: 'n', type: Boolean, description: 'Disable colorized output' }, // New option definition
+  { name: 'noColor', alias: 'n', type: Boolean, description: 'Disable colorized output' }, 
+  { name: 'backup', alias: 'b', type: Boolean, description: 'Create a backup file with the current arguments.' },
 ];
 
 async function run() {
-  const options = commandLineArgs(optionDefinitions);
+  let options = commandLineArgs(optionDefinitions);
+
+  if (options.backup) {
+    const backupOptions = { ...options };
+    delete backupOptions.backup;
+    fs.writeFileSync('thisismy.json', JSON.stringify(backupOptions));
+    if (options.noColor) {
+      console.log(`Backup saved to thisismy.json`);
+    } else {
+      console.log(chalk.yellow(`Backup saved to thisismy.json`));
+    }
+}
+
+let defaultOptions = {};
+if (fs.existsSync('thisismy.json')) {
+    defaultOptions = JSON.parse(fs.readFileSync('thisismy.json', 'utf8'));
+    if (options.noColor) {
+      console.log(`Using default options from thisismy.json`);
+    } else {
+      console.log(chalk.yellow(`Using default options from thisismy.json`));
+    }
+}
+options = { ...defaultOptions, ...options };
+
 
   if (options.version) {
     getVersion();
