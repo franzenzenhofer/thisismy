@@ -1,8 +1,37 @@
 # thisismy
 
-Coded by ChatGPT V4.
-
+Coded by ChatGPT V4.  
 Directed by Franz Enzenhofer.
+
+## Speedrun
+
+1. **Install it the fastest way**: 
+   - Clone and link it with npm:
+   ```bash
+   git clone https://github.com/franzenzenhofer/thisismy.git
+   cd thisismy
+   npm install
+   npm link
+   ```
+
+2. **Example usage**:
+   ```bash
+   thisismy -ct file1.md file2.js https://www.example.com/awesome-content
+   ```
+
+- **Concatenation and whitespace reduction**: Combines the contents of `file1.md`, `file2.js`, and the main content from `https://www.example.com/awesome-content`, while thx to  `-t` removing unnecessary whitespace.
+  
+- **Clipboard copy**: The `-c` option copies the processed output directly to your clipboard for easy pasting.
+
+- **Prefixing**: Each file and URL content is prefixed with "This is my current %filename%" or "This is the current %url%" to provide context when pasting into ChatGPT or other environments.
+
+---
+
+## What does it do?
+
+`thisismy` concatenates files, removes unnecessary whitespace, prefixes the content with "This is my current %filename%:", and pushes it to the clipboard (or elsewhere). Also works with online resources. Ideal for crafting ChatGPT prompts involving multiple code files and docs.
+
+
 
 ## What does it do?
 

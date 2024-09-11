@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+process.removeAllListeners('warning');
+
 import fs from 'fs';
 import clipboardy from 'clipboardy';
 import commandLineArgs from 'command-line-args';
@@ -11,7 +13,6 @@ import { JSDOM } from 'jsdom';
 import { Readability } from '@mozilla/readability';
 
 import puppeteer from 'puppeteer';
-
 
 
 
