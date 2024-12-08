@@ -3,6 +3,7 @@
 'use strict';
 
 import fs from 'fs';
+import path from 'path';
 import clipboardy from 'clipboardy';
 import commandLineArgs from 'command-line-args';
 import commandLineUsage from 'command-line-usage';
@@ -13,39 +14,38 @@ import { Readability } from '@mozilla/readability';
 import puppeteer from 'puppeteer';
 import readline from 'readline';
 import crypto from 'crypto';
+import { globSync } from 'glob';   
+
+
+
+import ignore from 'ignore'; // npm install ignore
 
 const optionDefinitions = [
-  { name: 'copy', alias: 'c', type: Boolean },
-  { name: 'tiny', alias: 't', type: Boolean },
-  { name: 'file', multiple: true, defaultOption: true, type: String },
-  { name: 'prefix', alias: 'p', type: String },
-  { name: 'output', alias: 'o', type: String },
-  { name: 'help', alias: 'h', type: Boolean },
-  { name: 'silent', alias: 's', type: Boolean },
-  { name: 'debug', alias: 'd', type: Boolean },
-  { name: 'version', alias: 'V', type: Boolean },
-  { name: 'license', alias: 'l', type: Boolean },
-  { name: 'noColor', alias: 'n', type: Boolean },
-  { name: 'backup', alias: 'b', type: Boolean },
-  { name: 'watch', alias: 'w', type: Boolean },
-  { name: 'interval', alias: 'i', type: Number }
+  { name: 'copy', alias: 'c', type: Boolean, description: 'Copy output to clipboard' },
+  { name: 'tiny', alias: 't', type: Boolean, description: 'Removes double whitespaces from output' },
+  { name: 'file', multiple: true, defaultOption: true, type: String, description: 'Files/URLs to read. Supports wildcards.' },
+  { name: 'prefix', alias: 'p', type: String, description: 'Prefix for the output. String or file path.' },
+  { name: 'output', alias: 'o', type: String, description: 'Write output to a file' },
+  { name: 'help', alias: 'h', type: Boolean, description: 'Print usage help' },
+  { name: 'silent', alias: 's', type: Boolean, description: 'Silent output (no console prints)' },
+  { name: 'debug', alias: 'd', type: Boolean, description: 'Debug mode' },
+  { name: 'version', alias: 'V', type: Boolean, description: 'Print the version number and exit' },
+  { name: 'license', alias: 'l', type: Boolean, description: 'Print license and exit' },
+  { name: 'noColor', alias: 'n', type: Boolean, description: 'Disable colored output' },
+  { name: 'backup', alias: 'b', type: Boolean, description: 'Create/update a backup of current arguments in thisismy.json' },
+  { name: 'watch', alias: 'w', type: Boolean, description: 'Watch for changes and ask to re-run on changes' },
+  { name: 'interval', alias: 'i', type: Number, description: 'Interval in minutes for re-checking URLs (default: 5)' },
+  { name: 'greedy', alias: 'g', type: Boolean, description: 'Ignore all ignore rules and include all matched files' },
+  { name: 'recursive', alias: 'r', type: Boolean, description: 'Recurse into subdirectories when searching for files (for patterns)' }
 ];
 
-const fetchOptions = {
-  headers: {
-    'User-Agent': 'Mozilla/5.0',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-    'Accept-Language': 'en-US,en;q=0.5',
-    'Accept-Encoding': 'gzip, deflate, br',
-    'Connection': 'keep-alive',
-    'Upgrade-Insecure-Requests': '1'
-  }
-};
+
 
 async function run() {
   let options = commandLineArgs(optionDefinitions);
   handleBackup(options);
   options = loadDefaults(options);
+
   if (options.version) { printVersion(); return; }
   if (options.license) { printLicense(); return; }
   if (options.help) { printUsage(); return; }
@@ -71,34 +71,18 @@ async function run() {
     }
   }
 
-  await processFilesAndUrls(options, prefixContent);
+  // Resolve files and URLs to process, applying ignore rules if necessary
+  const { finalResources, isSingleExactFile } = await resolveResources(options);
+
+  if (finalResources.length === 0) {
+    if (!options.silent) console.log('No files/URLs after applying ignore rules.');
+    return;
+  }
+
+  await processFilesAndUrls(options, prefixContent, finalResources);
 
   if (options.watch) {
-    await startWatching(options, prefixContent);
-  }
-}
-
-async function processFilesAndUrls(options, prefixContent) {
-  const outputArr = [];
-  for (const filename of options.file) {
-    const content = await printFileContents(filename, options, prefixContent);
-    outputArr.push(content);
-  }
-  const finalOutput = outputArr.join('');
-  if (!options.silent) {
-    console.log(finalOutput);
-  }
-  if (options.output) {
-    fs.writeFileSync(options.output, finalOutput);
-    if (!options.silent) {
-      logColored(`Output written to ${options.output}`, chalk.yellow, options);
-    }
-  }
-  if (options.copy) {
-    clipboardy.writeSync(finalOutput);
-    if (!options.silent) {
-      logColored('Output copied to clipboard', chalk.yellow, options);
-    }
+    await startWatching(options, prefixContent, finalResources);
   }
 }
 
@@ -129,14 +113,27 @@ function printLicense() {
 
 function printUsage() {
   const usage = commandLineUsage([
-    { header: 'thisismy', content: 'A CLI tool.' },
+    { header: 'thisismy', content: 'Prints and processes contents of files/URLs with optional prefix, ignoring rules, and more.' },
     { header: 'Options', optionList: optionDefinitions },
+    {
+      header: 'Behavior',
+      content: [
+        '- By default, respects ignore rules from `.thisismyignore` if present, otherwise from `.gitignore` if present.',
+        '- If no ignore file is found, defaults to ignoring dotfiles and typical binary files when multiple files/patterns are given.',
+        '- A single explicitly named file bypasses ignore rules unless `-g` is used.',
+        '- `-g` (greedy) includes all files, ignoring any ignore rules.',
+        '- `-S` (subdirectories) searches recursively for matching files.',
+        '- `-w` (watch) re-prompts when changes in watched files/URLs occur.',
+      ]
+    },
     { header: 'Examples', content: [
-      { desc: 'Print a file', example: 'thisismy file.txt' },
+      { desc: 'Print a single file', example: 'thisismy file.txt' },
       { desc: 'Copy output', example: 'thisismy -c file.txt' },
-      { desc: 'Write output', example: 'thisismy -o out.txt file.txt' },
+      { desc: 'Write output to a file', example: 'thisismy -o out.txt file.txt' },
       { desc: 'Use prefix', example: 'thisismy -p prefix.txt file.txt' },
-      { desc: 'Watch mode', example: 'thisismy -w file.txt' }
+      { desc: 'Watch mode', example: 'thisismy -w *.js' },
+      { desc: 'Greedy (no ignoring)', example: 'thisismy -g *.png' },
+      { desc: 'Recursive subdirectories', example: 'thisismy -S *.js' }
     ]}
   ]);
   console.log(usage);
@@ -184,6 +181,30 @@ function parseContent(html) {
   return content;
 }
 
+async function processFilesAndUrls(options, prefixContent, resources) {
+  const outputArr = [];
+  for (const filename of resources) {
+    const content = await printFileContents(filename, options, prefixContent);
+    outputArr.push(content);
+  }
+  const finalOutput = outputArr.join('');
+  if (!options.silent) {
+    console.log(finalOutput);
+  }
+  if (options.output) {
+    fs.writeFileSync(options.output, finalOutput);
+    if (!options.silent) {
+      logColored(`Output written to ${options.output}`, chalk.yellow, options);
+    }
+  }
+  if (options.copy) {
+    clipboardy.writeSync(finalOutput);
+    if (!options.silent) {
+      logColored('Output copied to clipboard', chalk.yellow, options);
+    }
+  }
+}
+
 async function printFileContents(filename, options, prefixContent) {
   let contents = '';
   const now = new Date();
@@ -208,19 +229,12 @@ async function printFileContents(filename, options, prefixContent) {
   const coloredContents = colorize(contents, chalk.green, options);
 
   const finalData = prefixContent + coloredHeader + coloredContents + coloredFooter;
-
-  if (!options.silent && !options.copy && !options.output && !options.watch) {
-    console.log(`${options.prefix ? options.prefix : ''} ${filename}:`);
-    console.log(finalData);
-  }
-
   return finalData;
 }
 
 function colorize(str, colorFunc, options) {
   if (options.silent || options.copy || options.output || options.watch) {
-    if (options.noColor) return str;
-    return str;
+    return options.noColor ? str : str;
   }
   if (options.noColor) return str;
   return colorFunc(str);
@@ -244,17 +258,17 @@ function formatDate(d) {
   return `${dd}.${mm}.${yyyy} ${hh}:${min}:${ss}`;
 }
 
-async function startWatching(options, prefixContent) {
+async function startWatching(options, prefixContent, resources) {
   const interval = options.interval * 60 * 1000;
-  const resources = options.file.slice();
   let prevContentMap = new Map();
 
   for (const res of resources) {
     const content = await getContent(res, options);
     prevContentMap.set(res, hashContent(content));
     if (!res.startsWith('http')) {
+      // fs.watch for local files
       fs.watch(res, { persistent: true }, async () => {
-        await handleChange(res, prevContentMap, options, prefixContent);
+        await handleChange(res, prevContentMap, options, prefixContent, resources);
       });
     }
   }
@@ -262,23 +276,23 @@ async function startWatching(options, prefixContent) {
   if (resources.some(r => r.startsWith('http'))) {
     setInterval(async () => {
       for (const r of resources.filter(r => r.startsWith('http'))) {
-        await handleChange(r, prevContentMap, options, prefixContent);
+        await handleChange(r, prevContentMap, options, prefixContent, resources);
       }
     }, interval);
   }
 }
 
-async function handleChange(resource, prevContentMap, options, prefixContent) {
+async function handleChange(resource, prevContentMap, options, prefixContent, allResources) {
   const newContent = await getContent(resource, options);
   const newHash = hashContent(newContent);
   const oldHash = prevContentMap.get(resource);
   if (newHash !== oldHash) {
     prevContentMap.set(resource, newHash);
-    await askForReRun([resource], options, prefixContent);
+    await askForReRun([resource], options, prefixContent, allResources);
   }
 }
 
-async function askForReRun(changedResources, options, prefixContent) {
+async function askForReRun(changedResources, options, prefixContent, allResources) {
   if (changedResources.length === 0) return;
   if (!options.silent) {
     console.log('\nThese resources were changed:');
@@ -290,7 +304,7 @@ async function askForReRun(changedResources, options, prefixContent) {
 
   const answer = await promptUser();
   if (answer.toLowerCase() === 'y') {
-    await processFilesAndUrls(options, prefixContent);
+    await processFilesAndUrls(options, prefixContent, allResources);
   } else if (answer.toLowerCase() === 'x') {
     process.exit(0);
   }
@@ -303,7 +317,7 @@ function promptUser() {
       rl.close();
       resolve(ans);
     });
-  }); 
+  });
 }
 
 async function getContent(resource, options) {
@@ -316,6 +330,103 @@ async function getContent(resource, options) {
 
 function hashContent(str) {
   return crypto.createHash('sha256').update(str || '').digest('hex');
+}
+
+/**
+ * Resolve resources:
+ * - If a single exact file is given (no wildcard, no multiple files), ignoring rules do not apply.
+ * - Otherwise, gather files/URLs, apply ignores unless -g is used.
+ * - If -S is set, also recurse into subdirectories.
+ * - For URLs, no ignoring applies since they are not files on disk.
+ * - If multiple patterns, use glob to expand them, then filter via ignore rules.
+ */
+async function resolveResources(options) {
+  const inputPaths = options.file;
+  const hasWildcard = inputPaths.some(p => p.includes('*'));
+  const multipleFiles = inputPaths.length > 1;
+  const isSingleExactFile = !multipleFiles && !hasWildcard && inputPaths.length === 1 && !inputPaths[0].startsWith('http');
+
+  // If single exact file and not URL, just return it as is (unless it's missing)
+  if (isSingleExactFile && !options.greedy) {
+    const singleFile = inputPaths[0];
+    if (fs.existsSync(singleFile) || singleFile.startsWith('http')) {
+      return { finalResources: [singleFile], isSingleExactFile: true };
+    } else {
+      return { finalResources: [], isSingleExactFile: true };
+    }
+  }
+
+  // If multiple patterns or wildcards, or we have URLs, we proceed with globbing and ignoring
+  let finalResources = [];
+
+  for (const pth of inputPaths) {
+    if (pth.startsWith('http')) {
+      // URLs are always included as is, they are not affected by ignore rules
+      finalResources.push(pth);
+    } else {
+      const globOptions = { dot: true };
+      let pattern = pth;
+
+      // If -S (subdirectories) is set, we can use a pattern like '**/*.js'
+      if (options.subdirectories && !pattern.includes('**')) {
+        // If user doesn't provide **, we assume they want recursion
+        // For example, '*.js' becomes '**/*.js'
+        const parsed = path.parse(pattern);
+        if (!pattern.startsWith('**/')) {
+          if (pattern.startsWith('./')) {
+            pattern = './**/' + pattern.slice(2);
+          } else {
+            pattern = '**/' + pattern;
+          }
+        }
+      }
+
+      const matches = globSync(pattern, globOptions);
+      finalResources.push(...matches);
+    }
+  }
+
+  // Remove duplicates
+  finalResources = Array.from(new Set(finalResources));
+
+  // If -g (greedy) is set, do not apply ignoring rules, skip dotfile and binary ignoring
+  if (options.greedy) {
+    return { finalResources, isSingleExactFile: false };
+  }
+
+  // Determine ignore rules
+  const ig = ignore();
+  let ignoreFileUsed = false;
+  if (fs.existsSync('.thisismyignore')) {
+    ig.add(fs.readFileSync('.thisismyignore', 'utf8'));
+    ignoreFileUsed = true;
+  } else if (fs.existsSync('.gitignore')) {
+    ig.add(fs.readFileSync('.gitignore', 'utf8'));
+    ignoreFileUsed = true;
+  }
+
+  // Default ignoring rules if no ignore file used
+  // If no ignore files and multiple files or wildcards given:
+  // - Ignore dotfiles
+  // - Ignore typical binary files (jpg, jpeg, png, gif, pdf, zip, exe, etc.)
+  const defaultBinaryExtensions = ['.png','.jpg','.jpeg','.gif','.pdf','.zip','.rar','.7z','.exe','.dll','.bin','.mp4','.mp3','.wav','.mov','.avi'];
+  if (!ignoreFileUsed && (multipleFiles || hasWildcard)) {
+    // Add patterns to ignore dotfiles and common binary files if no ignore file
+    ig.add('.*');
+    for (const ext of defaultBinaryExtensions) {
+      ig.add(`*${ext}`);
+    }
+  }
+
+  // Apply ignore rules to file resources (not URLs)
+  const fileResources = finalResources.filter(r => !r.startsWith('http'));
+  const urlResources = finalResources.filter(r => r.startsWith('http'));
+  const filteredFiles = ig.filter(fileResources);
+
+  // The filtered list excludes ignored files
+  finalResources = [...filteredFiles, ...urlResources];
+
+  return { finalResources, isSingleExactFile: false };
 }
 
 await run();

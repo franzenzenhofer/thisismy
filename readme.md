@@ -1,218 +1,153 @@
 # thisismy
 
-Coded by ChatGPT V4.  
-Directed by Franz Enzenhofer.
+A command-line tool to streamline your ChatGPT prompts by concatenating files, URLs, and resources into a single, well-formatted output. It can remove unnecessary whitespace, copy results to your clipboard, apply prefixes from files or strings, and even watch for changes in your resources to prompt for re-runs.
 
-## Speedrun
+## Key Features
 
-1. **Install it the fastest way**: 
-   - Clone and link it with npm:
+- **Combine Multiple Files/URLs**: Read and concatenate contents from files or URLs into a single output.
+- **Whitespace Reduction**: Use `-t` to trim down whitespace, saving tokens and making content more readable.
+- **Prefixing**: Apply a custom prefix from a string or file to your final output.
+- **Clipboard Copying**: Copy the processed output directly to your clipboard with `-c`.
+- **Ignore Rules**: Respect `.thisismyignore` or `.gitignore` files to exclude unwanted files.
+- **Watch Mode**: Automatically watch local files or periodically check URLs for changes and prompt to re-run.
+- **Backups**: Save your current arguments to `thisismy.json` and use them as defaults next time.
+
+## Installation
+
+**Prerequisites**:  
+- **Node.js** (v16+ recommended)
+- **npm**
+
+### Quick Start
+
+1. **Clone the Repository**
    ```bash
    git clone https://github.com/franzenzenhofer/thisismy.git
    cd thisismy
+   ```
+
+2. **Install Dependencies**
+   ```bash
    npm install
+   ```
+
+3. **Link the Tool Globally**
+   ```bash
    npm link
    ```
 
-2. **Example usage**:
-   ```bash
-   thisismy -ct file1.md file2.js https://www.example.com/awesome-content
-   ```
+After these steps, you can run the `thisismy` command from anywhere on your system.
 
-- **Concatenation and whitespace reduction**: Combines the contents of `file1.md`, `file2.js`, and the main content from `https://www.example.com/awesome-content`, while thx to  `-t` removing unnecessary whitespace.
-  
-- **Clipboard copy**: The `-c` option copies the processed output directly to your clipboard for easy pasting.
+### Updating the Tool
 
-- **Prefixing**: Each file and URL content is prefixed with "This is my current %filename%" or "This is the current %url%" to provide context when pasting into ChatGPT or other environments.
+If you’ve previously installed `thisismy`, simply pull the latest changes, run `npm install` again, and then `npm link` to update the global command.
 
----
+## Usage
 
-## What does it do?
-
-`thisismy` concatenates files, removes unnecessary whitespace, prefixes the content with "This is my current %filename%:", and pushes it to the clipboard (or elsewhere). Also works with online resources. Ideal for crafting ChatGPT prompts involving multiple code files and docs.
-
-
-
-## What does it do?
-
-`thisismy` concatinats files, removes unnecessary whitespace,  prefixes it with "This is my current %filename%:" and pushes it to the clipboard (or elsewhere). Also works with online resources. Intended use is ChatGPT prompts with lots of code and docs. 
-
-## What does it solve?
-
-**Coding with ChatGPT** quite fast ends up with **copy&paste-ing again and again** multiple files as prompts prefixed with "This is my current %file%" into the ChatGPT textbox. Same with online ressources. This a) make one **crazy over time** and b) **wastes lots of time** and c) **wastes tokens** as unnecessary stuff (mostly whitespaces and boilerplate from the webpages) ends up in there. `thisismy` solves this. 
-
-
-## Tell me more
-
-`thisismy` is a command-line utility designed to simplify the process of creating prompts for ChatGPT. With `thisismy`, you can print the contents of one or more files or online resources to the terminal, copy them to the clipboard and whitespace reduce them to save tokens. I.e.:
-
-`thisismy -c -t -p "ChatGPT check this code for the best practices outlined in the online ressource." file1.js file2.js http://example.com/index.html
-` 
-
-This command will copy (`-c`) the contents of `file1.js` and `file2.js` and the **main content** of `http://example.com/index.html` to the **clipboard**, with **double whitespaces removed** (`-t`). Each time the output is prefixed with "`This is my current %file%`" and "`This is the current %url%`". The whole response is **prefixed** (`-p`) with the defined prefix string. 
-
-![Preview 1](./preview-1.png)
-
-![Preview 2](./preview-2.png)
-
-
-## Installation 
-To install the `thisismy` package from GitHub and link it globally, you can follow these steps: 
-
-1. Clone the `thisismy` repository from GitHub: 
-``` 
-git clone https://github.com/franzenzenhofer/thisismy.git 
-``` 
-
-2. Navigate to the `thisismy` directory: 
-``` 
-cd thisismy 
-``` 
-
-3. Install the dependencies: 
-``` 
-npm install 
-``` 
-
-4. Link the package globally: 
-``` 
-npm link 
-``` 
-
-Now you should be able to use the `thisismy` command anywhere in your terminal. 
-
-## Usage 
-To use `thisismy`, you can run the command followed by the file path(s) you want to print: 
-
-``` 
-thisismy path/to/file.txt 
-``` 
-
-You can also specify multiple file paths: 
-
-``` 
-thisismy path/to/file1.txt path/to/file2.txt 
-``` 
-
-If you want to use an online resource, you can pass the URL instead of the file path: 
-
-``` 
-thisismy https://www.example.com/index.html 
-``` 
-
-### Options 
-`thisismy` supports several options: 
-
-| Option          | Alias | Description                                                     |
-|----------------|-------|-----------------------------------------------------------------|
-| `--copy`       | `-c`  | Copies the output to the clipboard                              |
-| `--tiny`       | `-t`  | Removes double whitespaces from the read files                  |
-| `--file`       |       | List of files or URLs to read                                    |
-| `--prefix`     | `-p`  | Prefix for the output. Can be a string or a file                 |
-| `--output`     | `-o`  | Writes output to a file                                          |
-| `--help`       | `-h`  | Prints usage information                                         |
-| `--silent`     | `-s`  | Silent output                                                   |
-| `--debug`      | `-d`  | Debug mode                                                      |
-| `--version`    | `-v`  | Prints the version number and exits                              |
-| `--license`    | `-l`  | Prints the license and exits                                     |
-| `--noColor`    | `-n`  | Disable colorized output                                         |
-
-
-#### Example Usage 
-Print the contents of a file to the terminal: 
-
-``` 
-thisismy path/to/file.txt 
-``` 
-
-Copy the contents of a file to the clipboard: 
-
-``` 
-thisismy -c path/to/file.txt 
-``` 
-
-Write the contents of a file to a new file: 
-
-``` 
-thisismy -o path/to/newfile.txt path/to/file.txt 
-``` 
-
-Specify a prefix for the output: 
-
-``` 
-thisismy -p "Prefix for output" path/to/file.txt 
-``` 
-
-If you want to use a file as a prefix, you can pass the file path as an argument to the `-p` option. For example: 
-
-``` 
-thisismy -p /path/to/prefix.txt path/to/file.txt 
-``` 
-
-This will use the contents of `/path/to/prefix.txt` as the prefix for the output. 
-
-
-## Example for -t option
-
-Suppose you have a file called `example.txt` with double spaces between some words. You can use the `-t` option to remove them and print the contents of the file:
-
-```
-thisismy -t example.txt
+Basic usage:
+```bash
+thisismy [options] [files/URLs...]
 ```
 
-## Example for using -c -t -p while multiple files, a prefix and an online resource
+Examples:
+- Print a single file:
+  ```bash
+  thisismy file.txt
+  ```
+- Print multiple files and a URL, trim whitespace, and copy to clipboard:
+  ```bash
+  thisismy -c -t file1.md file2.js https://example.com
+  ```
+- Add a prefix from `prefix.md` before all content:
+  ```bash
+  thisismy -p prefix.md file.txt
+  ```
+- Write output to `out.txt`:
+  ```bash
+  thisismy -o out.txt file.txt
+  ```
+- Watch mode (re-run if files/URLs change):
+  ```bash
+  thisismy -wc *.js
+  ```
 
-Suppose you have two files, `file1.txt` and `file2.txt`, an online resource `http://example.com/index.html`, and you want to prefix the output with the contents of a file called `prefix.txt`. You also want to remove double whitespaces from the read files and copy the output to the clipboard. You can use the following command:
+## Common Options
 
+| Option          | Alias | Description                                                    |
+|-----------------|-------|----------------------------------------------------------------|
+| `--help`        | `-h`  | Print usage information                                        |
+| `--copy`        | `-c`  | Copy the final output to your clipboard                        |
+| `--tiny`        | `-t`  | Remove unnecessary whitespace                                  |
+| `--prefix`      | `-p`  | Prefix output with a string or contents of a file              |
+| `--output`      | `-o`  | Write output to the specified file                             |
+| `--silent`      | `-s`  | Run silently (no console output)                               |
+| `--debug`       | `-d`  | Enable debug mode                                              |
+| `--version`     | `-V`  | Print the current version number                               |
+| `--license`     | `-l`  | Print license information                                      |
+| `--noColor`     | `-n`  | Disable colored output                                         |
+| `--backup`      | `-b`  | Save the current arguments to `thisismy.json` for future runs  |
+| `--watch`       | `-w`  | Watch for file changes or periodically check URLs              |
+| `--interval`    | `-i`  | Check URLs every X minutes (default: 5) in watch mode          |
+| `--greedy`      | `-g`  | Ignore all ignore rules and include all matched files          |
+| `--recursive`   | `-r`  | Recurse into subdirectories when searching for patterns        |
+
+## Ignore Behavior
+
+- If a `.thisismyignore` file is present, it defines what to ignore.
+- If not, `.gitignore` is used if available.
+- Without ignore files and when dealing with multiple files, `thisismy` ignores common binary files and dotfiles by default (unless `-g` is used).
+- A single explicitly named file always bypasses ignore rules unless `-g` is used.
+
+## Examples
+
+- **Combine and trim:**  
+  ```bash
+  thisismy -t file1.txt file2.txt
+  ```
+  Removes excessive whitespace and prints combined content.
+
+- **Copy to clipboard and prefix:**  
+  ```bash
+  thisismy -c -p prefix.md file.txt
+  ```
+  Copies the combined content (prefixed with `prefix.md` content) directly to your clipboard.
+
+- **Online resource plus local files:**  
+  ```bash
+  thisismy -t -c file1.js file2.js https://example.com
+  ```
+  Trims whitespace, copies output to clipboard, and includes main content from the provided URL.
+
+- **Watch mode:**  
+  ```bash
+  thisismy -w *.js
+  ```
+  Watches all `.js` files. If any change, you’ll be prompted to re-run and copy+trim again if desired.
+
+## Backup Feature
+
+Use `-b` to create/update `thisismy.json` with your current arguments. On subsequent runs in the same directory, `thisismy` will use these defaults automatically. You can still override them by providing new arguments.
+
+Example:
+```bash
+thisismy -bct file.txt
 ```
-thisismy -c -t -p prefix.txt file1.txt file2.txt http://example.com/index.html
-```
+Creates a `thisismy.json` with `copy=true`, `tiny=true`, and `file=["file.txt"]`. Next time, `thisismy` uses these defaults unless overridden.
 
-This will print the contents of `file1.txt`, `file2.txt`, and the online resource with double whitespaces removed and a prefix of the contents of `prefix.txt`. The output will also be copied to the clipboard.
+## Why Use thisismy?
 
+When working with ChatGPT, you often need to copy multiple files, URLs, or large texts as context. Doing this manually is tedious and prone to errors. `thisismy` automates this process, letting you:
 
-Sure, here's an example README.md for the `-b` backup feature you described:
+- Concatenate multiple sources into one prompt.
+- Remove unnecessary whitespace to save tokens.
+- Automatically apply prefixes for clear context.
+- Watch for changes to resources and easily re-run.
 
-# Thisismy Backup Feature
-
-This is a new feature added to Thisismy that allows you to backup your current arguments to a JSON file and use those values as defaults whenever you run Thisismy in the same directory.
-
-## How to Use
-
-To use this feature, simply add the `-b` or `--backup` option when running Thisismy. For example:
-
-```
-$ thisismy -bct file.txt
-```
-
-This will create a `thisismy.json` file in the current directory with the current arguments used for the prompt. The contents of the file will look like this:
-
-```json
-{
-  "copy": true,
-  "tiny": true,
-  "file": ["file.txt"],
-  "prefix": "",
-  "output": "",
-  "help": false,
-  "silent": false,
-  "debug": false,
-  "version": false,
-  "license": false,
-  "noColor": false
-}
-```
-
-Whenever you run Thisismy in the same directory, it will look for a `thisismy.json` file and use the values there as the defaults. You can still override these defaults by passing in new arguments when running Thisismy.
-
-## Notes
-
-- If you want to update the defaults in the `thisismy.json` file, simply run Thisismy with the new arguments and the file will be updated with the new values.
-
+This leads to a more efficient, consistent, and pleasant workflow.
 
 ## License
 
-`thisismy` is licensed under the MIT License. See [LICENSE](LICENSE) for more information.
+`thisismy` is licensed under the MIT License. See [LICENSE](LICENSE) for details.
 
 
 
