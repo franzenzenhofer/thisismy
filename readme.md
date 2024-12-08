@@ -134,6 +134,28 @@ thisismy -bct file.txt
 ```
 Creates a `thisismy.json` with `copy=true`, `tiny=true`, and `file=["file.txt"]`. Next time, `thisismy` uses these defaults unless overridden.
 
+```md### Using `-r` (Recursive) Option
+
+When you use the `-r` option, `thisismy` attempts to recursively search through subdirectories to find matching files based on your given pattern. However, one important detail is how your shell interprets wildcard patterns before passing them to `thisismy`.
+
+By default, shells like `bash` or `zsh` will expand unquoted wildcards (e.g., `*`, `*.js`) into a list of files and directories in the current folder **before** `thisismy` sees them. This means that if you run:
+
+```bash
+thisismy -r *.vue
+```
+
+your shell might replace `*.vue` with a list of files in the current directory, preventing `thisismy` from receiving the intended wildcard pattern. Without the raw pattern, `thisismy` cannot apply its recursive glob logic to find matching files in subdirectories.
+
+**How to Solve This:**
+
+- **Quote Your Patterns**: Enclose your pattern in quotes so the shell doesn't expand it:
+  
+  ```bash
+  thisismy -r '*.vue'
+  ```
+
+  Now `thisismy` receives the literal `*.vue` pattern and can recursively search subdirectories for `.vue` files as intended.
+
 ## Why Use thisismy?
 
 When working with ChatGPT, you often need to copy multiple files, URLs, or large texts as context. Doing this manually is tedious and prone to errors. `thisismy` automates this process, letting you:

@@ -15,11 +15,10 @@ import puppeteer from 'puppeteer';
 import readline from 'readline';
 import crypto from 'crypto';
 import { globSync } from 'glob';   
+import ignore from 'ignore';
 
 
-
-import ignore from 'ignore'; // npm install ignore
-
+// Define command line options
 const optionDefinitions = [
   { name: 'copy', alias: 'c', type: Boolean, description: 'Copy output to clipboard' },
   { name: 'tiny', alias: 't', type: Boolean, description: 'Removes double whitespaces from output' },
@@ -39,8 +38,21 @@ const optionDefinitions = [
   { name: 'recursive', alias: 'r', type: Boolean, description: 'Recurse into subdirectories when searching for files (for patterns)' }
 ];
 
+// Fetch options for URLs
+const fetchOptions = {
+  headers: {
+    'User-Agent': 'Mozilla/5.0',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.5',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Connection': 'keep-alive',
+    'Upgrade-Insecure-Requests': '1'
+  }
+};
 
-
+// ---------------------------------------------
+// Run the main logic
+// ---------------------------------------------
 async function run() {
   let options = commandLineArgs(optionDefinitions);
   handleBackup(options);
@@ -49,19 +61,36 @@ async function run() {
   if (options.version) { printVersion(); return; }
   if (options.license) { printLicense(); return; }
   if (options.help) { printUsage(); return; }
+
   if (!options.file || options.file.length === 0) {
     console.error('Error: No file specified');
     printUsage();
     return;
   }
+
   if (!options.interval || options.interval < 1) {
-    options.interval = 5; 
+    options.interval = 5;
   }
 
   if (options.debug && !options.silent) {
     console.log('Options:', options);
   }
 
+  // If recursive, list all subdirectories from current folder first
+  if (options.recursive && !options.silent) {
+    console.log('Listing all subdirectories from the current folder:');
+    const allSubDirs = globSync('**/', { dot: true });
+    allSubDirs.forEach(d => {
+      // Filter out dotdirs explicitly here (no need if we want all)
+      const base = path.basename(d);
+      if (!base.startsWith('.')) {
+        console.log('  ' + d);
+      }
+    });
+    console.log('--- End of subdirectory listing ---');
+  }
+
+  // If prefix provided, load its contents
   let prefixContent = '';
   if (options.prefix) {
     if (fs.existsSync(options.prefix)) {
@@ -71,21 +100,50 @@ async function run() {
     }
   }
 
-  // Resolve files and URLs to process, applying ignore rules if necessary
-  const { finalResources, isSingleExactFile } = await resolveResources(options);
+  // Resolve resources, applying ignore and recursion rules
+  const { finalResources, isSingleExactFile, directoriesScanned } = await resolveResources(options);
 
+  // If no resources found at all, notify and exit gracefully
   if (finalResources.length === 0) {
-    if (!options.silent) console.log('No files/URLs after applying ignore rules.');
+    if (!options.silent) console.log('No files/URLs found after applying rules.');
     return;
   }
 
+  // Print info about recursion if enabled
+  if (options.recursive && !options.silent) {
+    console.log('Recursive search enabled. Directories scanned:');
+    directoriesScanned.forEach(dir => console.log(`  ${dir}`));
+    console.log(`Found ${finalResources.length} file(s)/URL(s) in total.`);
+  }
+
+  // Process the selected files/URLs
   await processFilesAndUrls(options, prefixContent, finalResources);
 
+  // If watch mode is enabled, start watching and then enter watch mode loop
   if (options.watch) {
     await startWatching(options, prefixContent, finalResources);
+
+    // Inform user about watch mode and how to exit
+    if (!options.silent) {
+      console.log('Watch mode enabled. Press "x" then ENTER at any time to exit watch mode.');
+    }
+
+    // Listen for 'x' input to exit watch mode
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    rl.on('line', (line) => {
+      if (line.trim().toLowerCase() === 'x') {
+        if (!options.silent) {
+          console.log('Exiting watch mode...');
+        }
+        process.exit(0);
+      }
+    });
   }
 }
 
+// ---------------------------------------------
+// Handle backup option: writes current args to thisismy.json
+// ---------------------------------------------
 function handleBackup(options) {
   if (options.backup) {
     const backupOptions = { ...options };
@@ -94,6 +152,9 @@ function handleBackup(options) {
   }
 }
 
+// ---------------------------------------------
+// Load defaults from thisismy.json if present
+// ---------------------------------------------
 function loadDefaults(options) {
   let defaultOptions = {};
   if (fs.existsSync('thisismy.json')) {
@@ -102,15 +163,24 @@ function loadDefaults(options) {
   return { ...defaultOptions, ...options };
 }
 
+// ---------------------------------------------
+// Print version info
+// ---------------------------------------------
 function printVersion() {
   const packageInfo = JSON.parse(fs.readFileSync('./package.json', 'utf8'));
   console.log(`thisismy ${packageInfo.version}`);
 }
 
+// ---------------------------------------------
+// Print license info
+// ---------------------------------------------
 function printLicense() {
   console.log('MIT License');
 }
 
+// ---------------------------------------------
+// Print usage help
+// ---------------------------------------------
 function printUsage() {
   const usage = commandLineUsage([
     { header: 'thisismy', content: 'Prints and processes contents of files/URLs with optional prefix, ignoring rules, and more.' },
@@ -122,23 +192,29 @@ function printUsage() {
         '- If no ignore file is found, defaults to ignoring dotfiles and typical binary files when multiple files/patterns are given.',
         '- A single explicitly named file bypasses ignore rules unless `-g` is used.',
         '- `-g` (greedy) includes all files, ignoring any ignore rules.',
-        '- `-S` (subdirectories) searches recursively for matching files.',
-        '- `-w` (watch) re-prompts when changes in watched files/URLs occur.',
+        '- `-r` (recursive) searches subdirectories and reports what was scanned.',
+        '- `-w` (watch) re-prompts when changes in watched files/URLs occur.'
       ]
     },
-    { header: 'Examples', content: [
-      { desc: 'Print a single file', example: 'thisismy file.txt' },
-      { desc: 'Copy output', example: 'thisismy -c file.txt' },
-      { desc: 'Write output to a file', example: 'thisismy -o out.txt file.txt' },
-      { desc: 'Use prefix', example: 'thisismy -p prefix.txt file.txt' },
-      { desc: 'Watch mode', example: 'thisismy -w *.js' },
-      { desc: 'Greedy (no ignoring)', example: 'thisismy -g *.png' },
-      { desc: 'Recursive subdirectories', example: 'thisismy -S *.js' }
-    ]}
+    {
+      header: 'Examples',
+      content: [
+        { desc: 'Print a single file', example: 'thisismy file.txt' },
+        { desc: 'Copy output', example: 'thisismy -c file.txt' },
+        { desc: 'Write output to a file', example: 'thisismy -o out.txt file.txt' },
+        { desc: 'Use prefix', example: 'thisismy -p prefix.txt file.txt' },
+        { desc: 'Watch mode', example: 'thisismy -w *.js' },
+        { desc: 'Greedy (no ignoring)', example: 'thisismy -g *.png' },
+        { desc: 'Recursive search', example: 'thisismy -r *.js' }
+      ]
+    }
   ]);
   console.log(usage);
 }
 
+// ---------------------------------------------
+// Fetch URL content with fallback to headless browser if needed
+// ---------------------------------------------
 async function fetchURL(url, tryJS = false) {
   if (!tryJS) {
     try {
@@ -170,6 +246,9 @@ async function fetchURL(url, tryJS = false) {
   }
 }
 
+// ---------------------------------------------
+// Parse HTML content from a webpage using Readability
+// ---------------------------------------------
 function parseContent(html) {
   const doc = new JSDOM(html);
   const reader = new Readability(doc.window.document);
@@ -181,22 +260,29 @@ function parseContent(html) {
   return content;
 }
 
+// ---------------------------------------------
+// Process a list of files/URLs: read content, prefix, colorize, etc.
+// ---------------------------------------------
 async function processFilesAndUrls(options, prefixContent, resources) {
   const outputArr = [];
   for (const filename of resources) {
     const content = await printFileContents(filename, options, prefixContent);
     outputArr.push(content);
   }
+
   const finalOutput = outputArr.join('');
+
   if (!options.silent) {
     console.log(finalOutput);
   }
+
   if (options.output) {
     fs.writeFileSync(options.output, finalOutput);
     if (!options.silent) {
       logColored(`Output written to ${options.output}`, chalk.yellow, options);
     }
   }
+
   if (options.copy) {
     clipboardy.writeSync(finalOutput);
     if (!options.silent) {
@@ -205,6 +291,9 @@ async function processFilesAndUrls(options, prefixContent, resources) {
   }
 }
 
+// ---------------------------------------------
+// Print the contents of a single file/URL with headers/footers/prefix
+// ---------------------------------------------
 async function printFileContents(filename, options, prefixContent) {
   let contents = '';
   const now = new Date();
@@ -232,6 +321,9 @@ async function printFileContents(filename, options, prefixContent) {
   return finalData;
 }
 
+// ---------------------------------------------
+// Colorize output if allowed
+// ---------------------------------------------
 function colorize(str, colorFunc, options) {
   if (options.silent || options.copy || options.output || options.watch) {
     return options.noColor ? str : str;
@@ -240,6 +332,9 @@ function colorize(str, colorFunc, options) {
   return colorFunc(str);
 }
 
+// ---------------------------------------------
+// Log with colors if allowed
+// ---------------------------------------------
 function logColored(msg, colorFunc, options) {
   if (options.noColor) {
     console.log(msg);
@@ -248,6 +343,9 @@ function logColored(msg, colorFunc, options) {
   }
 }
 
+// ---------------------------------------------
+// Format date into dd.mm.yyyy hh:mm:ss
+// ---------------------------------------------
 function formatDate(d) {
   const dd = String(d.getDate()).padStart(2, '0');
   const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -258,6 +356,9 @@ function formatDate(d) {
   return `${dd}.${mm}.${yyyy} ${hh}:${min}:${ss}`;
 }
 
+// ---------------------------------------------
+// Start watching resources. Local files with fs.watch, URLs with setInterval
+// ---------------------------------------------
 async function startWatching(options, prefixContent, resources) {
   const interval = options.interval * 60 * 1000;
   let prevContentMap = new Map();
@@ -265,8 +366,8 @@ async function startWatching(options, prefixContent, resources) {
   for (const res of resources) {
     const content = await getContent(res, options);
     prevContentMap.set(res, hashContent(content));
+
     if (!res.startsWith('http')) {
-      // fs.watch for local files
       fs.watch(res, { persistent: true }, async () => {
         await handleChange(res, prevContentMap, options, prefixContent, resources);
       });
@@ -282,16 +383,23 @@ async function startWatching(options, prefixContent, resources) {
   }
 }
 
+// ---------------------------------------------
+// Handle a change in a watched file/URL: ask user if they want to re-run
+// ---------------------------------------------
 async function handleChange(resource, prevContentMap, options, prefixContent, allResources) {
   const newContent = await getContent(resource, options);
   const newHash = hashContent(newContent);
   const oldHash = prevContentMap.get(resource);
+
   if (newHash !== oldHash) {
     prevContentMap.set(resource, newHash);
     await askForReRun([resource], options, prefixContent, allResources);
   }
 }
 
+// ---------------------------------------------
+// Prompt user if they want to re-run after changes
+// ---------------------------------------------
 async function askForReRun(changedResources, options, prefixContent, allResources) {
   if (changedResources.length === 0) return;
   if (!options.silent) {
@@ -306,10 +414,14 @@ async function askForReRun(changedResources, options, prefixContent, allResource
   if (answer.toLowerCase() === 'y') {
     await processFilesAndUrls(options, prefixContent, allResources);
   } else if (answer.toLowerCase() === 'x') {
+    // Exit the process
     process.exit(0);
   }
 }
 
+// ---------------------------------------------
+// Prompt user from stdin
+// ---------------------------------------------
 function promptUser() {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   return new Promise((resolve) => {
@@ -320,6 +432,9 @@ function promptUser() {
   });
 }
 
+// ---------------------------------------------
+// Get content from either file or URL
+// ---------------------------------------------
 async function getContent(resource, options) {
   if (resource.startsWith('http')) {
     return await fetchURL(resource);
@@ -328,73 +443,101 @@ async function getContent(resource, options) {
   }
 }
 
+// ---------------------------------------------
+// Hash content to detect changes
+// ---------------------------------------------
 function hashContent(str) {
   return crypto.createHash('sha256').update(str || '').digest('hex');
 }
 
-/**
- * Resolve resources:
- * - If a single exact file is given (no wildcard, no multiple files), ignoring rules do not apply.
- * - Otherwise, gather files/URLs, apply ignores unless -g is used.
- * - If -S is set, also recurse into subdirectories.
- * - For URLs, no ignoring applies since they are not files on disk.
- * - If multiple patterns, use glob to expand them, then filter via ignore rules.
- */
+// ---------------------------------------------
+// Resolve resources to process:
+// - Handle single exact file case
+// - Handle multiple patterns and apply ignore rules
+// - Handle recursion (-r) by modifying patterns
+// - Return directories scanned info if recursive
+// ---------------------------------------------
 async function resolveResources(options) {
   const inputPaths = options.file;
   const hasWildcard = inputPaths.some(p => p.includes('*'));
   const multipleFiles = inputPaths.length > 1;
   const isSingleExactFile = !multipleFiles && !hasWildcard && inputPaths.length === 1 && !inputPaths[0].startsWith('http');
-
+  
   // If single exact file and not URL, just return it as is (unless it's missing)
   if (isSingleExactFile && !options.greedy) {
     const singleFile = inputPaths[0];
     if (fs.existsSync(singleFile) || singleFile.startsWith('http')) {
-      return { finalResources: [singleFile], isSingleExactFile: true };
+      return { finalResources: [singleFile], isSingleExactFile: true, directoriesScanned: [] };
     } else {
-      return { finalResources: [], isSingleExactFile: true };
+      return { finalResources: [], isSingleExactFile: true, directoriesScanned: [] };
     }
   }
 
-  // If multiple patterns or wildcards, or we have URLs, we proceed with globbing and ignoring
   let finalResources = [];
+  let directoriesScanned = new Set();
 
   for (const pth of inputPaths) {
     if (pth.startsWith('http')) {
-      // URLs are always included as is, they are not affected by ignore rules
+      // URLs are always included as is
       finalResources.push(pth);
-    } else {
-      const globOptions = { dot: true };
-      let pattern = pth;
-
-      // If -S (subdirectories) is set, we can use a pattern like '**/*.js'
-      if (options.subdirectories && !pattern.includes('**')) {
-        // If user doesn't provide **, we assume they want recursion
-        // For example, '*.js' becomes '**/*.js'
-        const parsed = path.parse(pattern);
-        if (!pattern.startsWith('**/')) {
-          if (pattern.startsWith('./')) {
-            pattern = './**/' + pattern.slice(2);
-          } else {
-            pattern = '**/' + pattern;
-          }
-        }
-      }
-
-      const matches = globSync(pattern, globOptions);
-      finalResources.push(...matches);
+      continue;
     }
+
+    let pattern = pth;
+    // If recursive (-r) and no '**' present, add it
+    if (options.recursive && !pattern.includes('**')) {
+      if (pattern.startsWith('./')) {
+        pattern = './**/' + pattern.slice(2);
+      } else if (!pattern.startsWith('**/')) {
+        pattern = '**/' + pattern;
+      }
+    }
+
+    const globOptions = { dot: true };
+    const matches = globSync(pattern, globOptions);
+
+    matches.forEach(m => {
+      const dir = path.dirname(m);
+      directoriesScanned.add(dir);
+    });
+
+    finalResources.push(...matches);
   }
 
-  // Remove duplicates
   finalResources = Array.from(new Set(finalResources));
 
-  // If -g (greedy) is set, do not apply ignoring rules, skip dotfile and binary ignoring
-  if (options.greedy) {
-    return { finalResources, isSingleExactFile: false };
+  // Always ignore dotfiles and dotfolders by default, unless -g is used
+  if (!options.greedy) {
+    finalResources = finalResources.filter(r => {
+      const base = path.basename(r);
+      return !base.startsWith('.');
+    });
   }
 
-  // Determine ignore rules
+  // Filter out directories
+  finalResources = finalResources.filter(f => {
+    try {
+      const stat = fs.lstatSync(f);
+      return stat.isFile();
+    } catch {
+      return false;
+    }
+  });
+
+  // If -r is used, print which directories will be searched and what was found before ignoring
+  if (options.recursive && !options.silent) {
+    console.log('Recursive search enabled. Potential directories to search from current pattern:');
+    const allDirs = new Set(finalResources.map(f => path.dirname(f)));
+    for (const d of allDirs) {
+      console.log('  ' + d);
+    }
+    console.log(`Found ${finalResources.length} file(s) so far, proceeding with ignore rules and final filtering...`);
+  }
+
+  if (options.greedy) {
+    return { finalResources, isSingleExactFile: false, directoriesScanned: Array.from(directoriesScanned) };
+  }
+
   const ig = ignore();
   let ignoreFileUsed = false;
   if (fs.existsSync('.thisismyignore')) {
@@ -405,28 +548,24 @@ async function resolveResources(options) {
     ignoreFileUsed = true;
   }
 
-  // Default ignoring rules if no ignore file used
-  // If no ignore files and multiple files or wildcards given:
-  // - Ignore dotfiles
-  // - Ignore typical binary files (jpg, jpeg, png, gif, pdf, zip, exe, etc.)
   const defaultBinaryExtensions = ['.png','.jpg','.jpeg','.gif','.pdf','.zip','.rar','.7z','.exe','.dll','.bin','.mp4','.mp3','.wav','.mov','.avi'];
   if (!ignoreFileUsed && (multipleFiles || hasWildcard)) {
-    // Add patterns to ignore dotfiles and common binary files if no ignore file
     ig.add('.*');
     for (const ext of defaultBinaryExtensions) {
       ig.add(`*${ext}`);
     }
   }
 
-  // Apply ignore rules to file resources (not URLs)
   const fileResources = finalResources.filter(r => !r.startsWith('http'));
   const urlResources = finalResources.filter(r => r.startsWith('http'));
-  const filteredFiles = ig.filter(fileResources);
 
-  // The filtered list excludes ignored files
+  const filteredFiles = ig.filter(fileResources);
   finalResources = [...filteredFiles, ...urlResources];
 
-  return { finalResources, isSingleExactFile: false };
+  return { finalResources, isSingleExactFile: false, directoriesScanned: Array.from(directoriesScanned) };
 }
 
+// ---------------------------------------------
+// Run the program
+// ---------------------------------------------
 await run();
