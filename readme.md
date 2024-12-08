@@ -66,9 +66,9 @@ Examples:
   ```bash
   thisismy -o out.txt file.txt
   ```
-- Watch mode (re-run if files/URLs change):
+- Watch mode + resursive mode (re-run if files/URLs change):
   ```bash
-  thisismy -wc *.js
+  thisismy -wcr "*.js"
   ```
 
 ## Common Options
@@ -134,7 +134,7 @@ thisismy -bct file.txt
 ```
 Creates a `thisismy.json` with `copy=true`, `tiny=true`, and `file=["file.txt"]`. Next time, `thisismy` uses these defaults unless overridden.
 
-```md### Using `-r` (Recursive) Option
+### Using `-r` (Recursive) Option
 
 When you use the `-r` option, `thisismy` attempts to recursively search through subdirectories to find matching files based on your given pattern. However, one important detail is how your shell interprets wildcard patterns before passing them to `thisismy`.
 
