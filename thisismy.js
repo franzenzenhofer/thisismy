@@ -17,6 +17,14 @@ import crypto from 'crypto';
 import { globSync } from 'glob';   
 import ignore from 'ignore';
 
+const defaultBinaryExtensions = ['.png','.jpg','.jpeg','.gif','.pdf','.zip','.rar','.7z','.exe','.dll','.bin','.mp4','.mp3','.wav','.mov','.avi'];
+const defaultIgnores = [
+  'node_modules/**',
+  'package-lock.json',
+  '.*',
+  '**/.*',
+  ...defaultBinaryExtensions.map(ext => `*${ext}`)
+];
 
 // Define command line options
 const optionDefinitions = [
@@ -79,14 +87,29 @@ async function run() {
   // If recursive, list all subdirectories from current folder first
   if (options.recursive && !options.silent) {
     console.log('Listing all subdirectories from the current folder:');
-    const allSubDirs = globSync('**/', { dot: true });
-    allSubDirs.forEach(d => {
-      // Filter out dotdirs explicitly here (no need if we want all)
-      const base = path.basename(d);
-      if (!base.startsWith('.')) {
-        console.log('  ' + d);
-      }
+    const allSubDirs = globSync('**/', { dot: true })
+      .filter(dir => dir !== '.');
+    
+    // Create ignore instance for directory filtering
+    const dirIg = ignore();
+    if (fs.existsSync('.thisismyignore')) {
+      dirIg.add(fs.readFileSync('.thisismyignore', 'utf8'));
+    } else if (fs.existsSync('.gitignore')) {
+      dirIg.add(fs.readFileSync('.gitignore', 'utf8'));
+    }
+    if (!options.greedy) {
+      dirIg.add(defaultIgnores);
+    }
+
+    // Filter directories
+    const filteredDirs = allSubDirs.filter(dir => {
+      if (options.greedy) return true;
+      const relativeDir = path.relative(process.cwd(), dir);
+      if (!relativeDir) return true; // Skip empty paths
+      return !dirIg.ignores(relativeDir);
     });
+
+    filteredDirs.forEach(d => console.log('  ' + d));
     console.log('--- End of subdirectory listing ---');
   }
 
@@ -474,7 +497,21 @@ async function resolveResources(options) {
   }
 
   let finalResources = [];
-  let directoriesScanned = new Set();
+  
+  // Collect all ignore patterns
+  const ignorePatterns = [];
+
+  // Add default ignores if not in greedy mode
+  if (!options.greedy) {
+    ignorePatterns.push(...defaultIgnores);
+  }
+
+  // Add ignores from .thisismyignore or .gitignore if present
+  if (fs.existsSync('.thisismyignore')) {
+    ignorePatterns.push(...fs.readFileSync('.thisismyignore', 'utf8').split('\n'));
+  } else if (fs.existsSync('.gitignore')) {
+    ignorePatterns.push(...fs.readFileSync('.gitignore', 'utf8').split('\n'));
+  }
 
   for (const pth of inputPaths) {
     if (pth.startsWith('http')) {
@@ -493,26 +530,18 @@ async function resolveResources(options) {
       }
     }
 
-    const globOptions = { dot: true };
+    // Use globSync with ignore patterns
+    const globOptions = {
+      dot: options.greedy,
+      ignore: ignorePatterns
+    };
+
     const matches = globSync(pattern, globOptions);
-
-    matches.forEach(m => {
-      const dir = path.dirname(m);
-      directoriesScanned.add(dir);
-    });
-
     finalResources.push(...matches);
   }
 
-  finalResources = Array.from(new Set(finalResources));
-
-  // Always ignore dotfiles and dotfolders by default, unless -g is used
-  if (!options.greedy) {
-    finalResources = finalResources.filter(r => {
-      const base = path.basename(r);
-      return !base.startsWith('.');
-    });
-  }
+  // Remove duplicates and ensure paths are relative
+  finalResources = Array.from(new Set(finalResources)).map(f => path.relative(process.cwd(), f));
 
   // Filter out directories
   finalResources = finalResources.filter(f => {
@@ -524,43 +553,17 @@ async function resolveResources(options) {
     }
   });
 
-  // If -r is used, print which directories will be searched and what was found before ignoring
+  // Collect directories from finalResources after filtering
+  const directoriesScanned = new Set(finalResources.map(f => path.dirname(f)));
+
+  // If -r is used, print which directories will be searched
   if (options.recursive && !options.silent) {
     console.log('Recursive search enabled. Potential directories to search from current pattern:');
-    const allDirs = new Set(finalResources.map(f => path.dirname(f)));
-    for (const d of allDirs) {
-      console.log('  ' + d);
+    for (const dir of directoriesScanned) {
+      console.log('  ' + dir);
     }
-    console.log(`Found ${finalResources.length} file(s) so far, proceeding with ignore rules and final filtering...`);
+    console.log(`Found ${finalResources.length} file(s) after applying ignore rules and final filtering.`);
   }
-
-  if (options.greedy) {
-    return { finalResources, isSingleExactFile: false, directoriesScanned: Array.from(directoriesScanned) };
-  }
-
-  const ig = ignore();
-  let ignoreFileUsed = false;
-  if (fs.existsSync('.thisismyignore')) {
-    ig.add(fs.readFileSync('.thisismyignore', 'utf8'));
-    ignoreFileUsed = true;
-  } else if (fs.existsSync('.gitignore')) {
-    ig.add(fs.readFileSync('.gitignore', 'utf8'));
-    ignoreFileUsed = true;
-  }
-
-  const defaultBinaryExtensions = ['.png','.jpg','.jpeg','.gif','.pdf','.zip','.rar','.7z','.exe','.dll','.bin','.mp4','.mp3','.wav','.mov','.avi'];
-  if (!ignoreFileUsed && (multipleFiles || hasWildcard)) {
-    ig.add('.*');
-    for (const ext of defaultBinaryExtensions) {
-      ig.add(`*${ext}`);
-    }
-  }
-
-  const fileResources = finalResources.filter(r => !r.startsWith('http'));
-  const urlResources = finalResources.filter(r => r.startsWith('http'));
-
-  const filteredFiles = ig.filter(fileResources);
-  finalResources = [...filteredFiles, ...urlResources];
 
   return { finalResources, isSingleExactFile: false, directoriesScanned: Array.from(directoriesScanned) };
 }
