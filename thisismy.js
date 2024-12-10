@@ -352,7 +352,7 @@ function colorize(str, colorFunc, options) {
     return options.noColor ? str : str;
   }
   if (options.noColor) return str;
-  return colorFunc(str);
+  return colorFunc(str); 
 }
 
 // ---------------------------------------------
