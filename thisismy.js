@@ -1,22 +1,13 @@
 #!/usr/bin/env node
-
 /* eslint-disable no-console */
-
 /**
- * -----------------------------------------------------------------------------
- * thisismy - A CLI tool to concatenate file/URL content, apply prefixes,
- * respect ignore rules, watch for changes, optionally trim whitespace,
- * copy to clipboard, show a directory tree, etc.
+ * thisismy v1.4.0
  *
- * Updates requested:
- *  1. Show defaults from thisismy.json in the console (in color) if present.
- *  2. Add more typical binary file extensions to default ignores:
- *     e.g., .ico, .ttf, .woff, .woff2, .otf, .bak, .xz, .tgz, .gz, .dmg, .iso,
- *     .tar, .doc, .docx, .ppt, .pptx, .apk, .ipa, .img, etc.
- *  3. If -y is used, the tree view should also be appended to the final output
- *     that is copied (if -c) or written to file (if -o).
- *  4. No breaking changes.
- * -----------------------------------------------------------------------------
+ * - Added --predefined / -p for a file listing resources (one per line).
+ * - Interactive mode can save selected files to a new .thisismy.txt file.
+ * - Interactive mode also prompts to load an existing .thisismy.txt if found.
+ * - Interactive mode ends with user choosing final action (copy, write, none, etc.).
+ * - Removed old alias -p for prefix; use --prefix only.
  */
 
 import fs from 'fs';
@@ -35,46 +26,46 @@ import crypto from 'crypto';
 import { globSync } from 'glob';
 import ignore from 'ignore';
 
-//
-// Extended default ignoring patterns
-// (original plus additional typical binary/fonts/icons, etc.)
-//
+// Extended ignores
 const extendedBinaryExtensions = [
-  '.png',
-  '.jpg',
-  '.jpeg',
-  '.gif',
-  '.pdf',
-  '.zip',
-  '.rar',
-  '.7z',
-  '.exe',
-  '.dll',
-  '.bin',
-  '.mp4',
-  '.mp3',
-  '.wav',
-  '.mov',
-  '.avi',
-  '.ico',
-  '.ttf',
-  '.woff',
-  '.woff2',
-  '.otf',
-  '.bak',
-  '.xz',
-  '.tgz',
-  '.gz',
-  '.dmg',
-  '.iso',
-  '.tar',
-  '.doc',
-  '.docx',
-  '.ppt',
-  '.pptx',
-  '.apk',
-  '.ipa',
-  '.img',
+  // Images
+  '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp', '.ico', '.heic',
+  '.raw', '.psd', '.ai', '.eps', '.indd', '.cr2', '.nef', '.arw', '.dng', '.orf',
+  '.pcx', '.tga', '.icns', '.jxr', '.wdp', '.hdp', '.jng', '.xcf', '.pgm', '.pbm',
+  
+  // Documents
+  '.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx', '.odt', '.ods', '.odp',
+  '.pages', '.numbers', '.key', '.pub', '.one', '.mpp', '.vsd', '.vsdx', '.wp', '.wpd',
+  
+  // Archives
+  '.zip', '.rar', '.7z', '.gz', '.bz2', '.tar', '.xz', '.tgz', '.dmg', '.iso',
+  '.cab', '.bz', '.tbz', '.tbz2', '.lz', '.rz', '.lzma', '.tlz', '.txz', '.sit',
+  
+  // Audio/Video
+  '.mp3', '.mp4', '.wav', '.aac', '.m4a', '.ogg', '.flac', '.wma', '.mov', '.avi',
+  '.mkv', '.flv', '.webm', '.vob', '.wmv', '.mpg', '.mpeg', '.m4v', '.3gp', 
+  '.m2ts', '.mts', '.qt', '.rm', '.rmvb', '.asf', '.divx', '.m2v', '.ogv', '.dv',
+  
+  // Executables/Libraries
+  '.exe', '.dll', '.so', '.dylib', '.bin', '.apk', '.ipa', '.app', '.msi', '.deb',
+  '.rpm', '.pkg', '.pyc', '.pyo', '.pyd', '.o', '.ko', '.sys', '.cpl', '.drv',
+  '.framework', '.bundle', '.xpi', '.crx', '.plugin', '.air', '.appx', '.snap',
+  
+  // Fonts
+  '.ttf', '.otf', '.woff', '.woff2', '.eot', '.pfm', '.pfb', '.pcf',
+  '.fon', '.tfm',
+  
+  // Other binary
+  '.bak', '.pyc', '.pyo', '.o', '.obj', '.lib', '.a', '.class', '.jar',
+  '.dat', '.db', '.sqlite', '.mdb', '.accdb', '.ldf', '.mdf', '.ndf', '.frm', '.ibd',
+  '.sav', '.gho', '.wim', '.qcow', '.vdi', '.vmdk', '.hdd',
+  
+  // Design files
+  '.sketch', '.fig', '.xd', '.blend', '.c4d', '.max', '.mb', '.ma', '.hip', '.hda',
+  '.zbr', '.zpr', '.stl', '.obj', '.fbx', '.dae', '.3ds', '.dwg', '.dxf', '.skp',
+  
+  // Database/Cache
+  '.cache', '.idx', '.pack', '.sqlite3', '.myd', '.myi', '.gdb', '.fdb'
 ];
 
 const defaultIgnores = [
@@ -82,118 +73,103 @@ const defaultIgnores = [
   'package-lock.json',
   '.*',
   '**/.*',
-  ...extendedBinaryExtensions.map((ext) => `*${ext}`),
+  ...extendedBinaryExtensions.map((ext) => `*${ext}`)
 ];
 
-//
-// CLI option definitions
-//
+// -----------------------------------------------------------------------------
+// CLI options
+// -----------------------------------------------------------------------------
 const optionDefinitions = [
   { name: 'copy', alias: 'c', type: Boolean, description: 'Copy output to clipboard' },
+  { name: 'tiny', alias: 't', type: Boolean, description: 'Trim extra spaces' },
+  // prefix no longer has alias -p to avoid collision with --predefined
+  { name: 'prefix', /* alias: 'x', */ type: String, description: 'Prefix for the output (no short alias)' },
+  { name: 'output', alias: 'o', type: String, description: 'Write output to a file' },
+  { name: 'help', alias: 'h', type: Boolean, description: 'Print usage help' },
+  { name: 'silent', alias: 's', type: Boolean, description: 'Silent output' },
+  { name: 'debug', alias: 'd', type: Boolean, description: 'Debug mode' },
+  { name: 'version', alias: 'V', type: Boolean, description: 'Print version number' },
   {
-    name: 'tiny',
-    alias: 't',
+    name: 'license',
     type: Boolean,
-    description: 'Trim extra spaces (collapse multiple spaces, remove leading/trailing)',
+    description: 'Print license and exit (conflict with -l limit if used incorrectly)'
+  },
+  { name: 'noColor', alias: 'n', type: Boolean, description: 'Disable colored output' },
+  { name: 'backup', alias: 'b', type: Boolean, description: 'Backup current args to thisismy.json' },
+  { name: 'watch', alias: 'w', type: Boolean, description: 'Watch for changes' },
+  { name: 'interval', alias: 'i', type: Number, description: 'Minutes to re-check URLs (default 5)' },
+  { name: 'greedy', alias: 'g', type: Boolean, description: 'Ignore ignore rules' },
+  { name: 'recursive', alias: 'r', type: Boolean, description: 'Recurse subdirectories' },
+  { name: 'tree', alias: 'y', type: Boolean, description: 'Append directory tree to output' },
+  { name: 'interactive', type: Boolean, description: 'Interactively confirm included files' },
+  { name: 'stats', type: Boolean, description: 'Show file stats (size, lines, mod time)' },
+  { name: 'format', type: String, description: 'md|txt|json|html (default md)' },
+  { name: 'treeOnly', type: Boolean, description: 'Output only directory tree, no file content' },
+  {
+    name: 'limit',
+    alias: 'l',
+    type: String,
+    description: 'Skip files larger than this size (e.g. 2mb or no). Default 1mb'
+  },
+  {
+    name: 'predefined',
+    alias: 'p',
+    type: String,
+    description: 'Path to a .thisismy.txt (or any .txt) listing resources, one per line'
   },
   {
     name: 'file',
     multiple: true,
     defaultOption: true,
     type: String,
-    description: 'Files/URLs to read. Supports wildcards.',
-  },
-  {
-    name: 'prefix',
-    alias: 'p',
-    type: String,
-    description: 'Prefix for the output. String or file path.',
-  },
-  { name: 'output', alias: 'o', type: String, description: 'Write output to a file' },
-  { name: 'help', alias: 'h', type: Boolean, description: 'Print usage help' },
-  { name: 'silent', alias: 's', type: Boolean, description: 'Silent output (no console prints)' },
-  { name: 'debug', alias: 'd', type: Boolean, description: 'Debug mode' },
-  { name: 'version', alias: 'V', type: Boolean, description: 'Print the version number and exit' },
-  { name: 'license', alias: 'l', type: Boolean, description: 'Print license and exit' },
-  { name: 'noColor', alias: 'n', type: Boolean, description: 'Disable colored output' },
-  {
-    name: 'backup',
-    alias: 'b',
-    type: Boolean,
-    description: 'Create/update a backup of current arguments in thisismy.json',
-  },
-  { name: 'watch', alias: 'w', type: Boolean, description: 'Watch for changes' },
-  {
-    name: 'interval',
-    alias: 'i',
-    type: Number,
-    description: 'Interval in minutes for re-checking URLs (default: 5)',
-  },
-  {
-    name: 'greedy',
-    alias: 'g',
-    type: Boolean,
-    description: 'Ignore all ignore rules and include all matched files',
-  },
-  {
-    name: 'recursive',
-    alias: 'r',
-    type: Boolean,
-    description: 'Recurse into subdirectories when searching for files (wildcards)',
-  },
-  {
-    name: 'tree',
-    alias: 'y',
-    type: Boolean,
-    description: 'At the end of output, show a tree view of processed files',
-  },
+    description: 'Files/URLs to read, unless --predefined is used'
+  }
 ];
 
+// For fetch
 const fetchOptions = {
   headers: {
     'User-Agent': 'Mozilla/5.0',
-    Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
     'Accept-Language': 'en-US,en;q=0.5',
     'Accept-Encoding': 'gzip, deflate, br',
-    Connection: 'keep-alive',
-    'Upgrade-Insecure-Requests': '1',
-  },
+    'Connection': 'keep-alive',
+    'Upgrade-Insecure-Requests': '1'
+  }
 };
 
-/**
- * Main program entry point
- */
 async function main() {
   let options = commandLineArgs(optionDefinitions);
   handleBackup(options);
 
-  // Set default behavior when no arguments provided
-  if (Object.keys(options).length === 0 || 
-      (Object.keys(options).length === 1 && options.file === undefined)) {
+  // Default if no args
+  if (
+    Object.keys(options).length === 0 ||
+    (Object.keys(options).length === 1 && options.file === undefined)
+  ) {
     options = {
-      copy: true,
-      recursive: true,
-      tree: true,
-      file: ["*"]
+      copy: true,      // -c
+      recursive: true, // -r
+      tree: true,     // -y
+      file: ['*']
     };
   }
 
-  // Attempt to load defaults
   const { finalOptions, loadedDefaults } = loadDefaults(options);
+  options = finalOptions;
 
-  // Show loaded defaults in color, if any
-  if (!finalOptions.silent && Object.keys(loadedDefaults).length > 0) {
-    displayDefaultsUsed(loadedDefaults, finalOptions);
+  if (!options.silent && Object.keys(loadedDefaults).length > 0) {
+    displayDefaultsUsed(loadedDefaults, options);
   }
 
-  options = finalOptions;
+  // license vs limit
+  if (options.license && typeof options.limit !== 'string') {
+    printLicense();
+    return;
+  }
 
   if (options.version) {
     printVersion();
-    return;
-  }
-  if (options.license) {
-    printLicense();
     return;
   }
   if (options.help) {
@@ -201,29 +177,55 @@ async function main() {
     return;
   }
 
-  // If recursive is set but no files specified, use "*" as default
-  if (options.recursive && (!options.file || options.file.length === 0)) {
-    options.file = ["*"];
-  } else if (!options.file || options.file.length === 0) {
-    console.error('Error: No file specified');
-    printUsage();
-    return;
+  // If user gave --predefined, we skip normal "file" input patterns
+  let usingPredefined = false;
+  let linesFromPredefined = [];
+  if (options.predefined) {
+    usingPredefined = true;
+    try {
+      const fileData = fs.readFileSync(options.predefined, 'utf8');
+      linesFromPredefined = fileData
+        .split('\n')
+        .map((x) => x.trim())
+        .filter((x) => x.length > 0 && !x.startsWith('#'));
+      if (!linesFromPredefined.length) {
+        throw new Error('No valid lines found in predefined file');
+      }
+    } catch (err) {
+      console.error(`Error loading predefined resources from "${options.predefined}":\n${err}`);
+      return;
+    }
   }
 
-  // Default interval
+  // If user had no file patterns but no --predefined => error
+  if (!usingPredefined) {
+    if (options.recursive && (!options.file || options.file.length === 0)) {
+      options.file = ['*'];
+    } else if (!options.file || options.file.length === 0) {
+      console.error('Error: No file specified and no --predefined used');
+      printUsage();
+      return;
+    }
+  }
+
+  // Interval default
   if (!options.interval || options.interval < 1) {
     options.interval = 5;
   }
 
+  // Parse limit
+  const sizeLimitInfo = parseSizeLimit(options.limit);
+  const sizeLimitBytes = sizeLimitInfo.bytes;
   if (options.debug && !options.silent) {
     console.log('Options:', options);
+    console.log('Size limit in bytes:', sizeLimitBytes);
   }
 
-  // If recursive, optionally list subdirectories
-  if (options.recursive && !options.silent) {
+  // Possibly list subdirectories if recursive
+  if (options.recursive && !options.silent && !usingPredefined) {
+    // This listing only makes sense if we're actually scanning patterns
     console.log('Listing all subdirectories from the current folder:');
     const allSubDirs = globSync('**/', { dot: true }).filter((dir) => dir !== '.');
-
     const dirIg = ignore();
     if (fs.existsSync('.thisismyignore')) {
       dirIg.add(fs.readFileSync('.thisismyignore', 'utf8'));
@@ -233,51 +235,174 @@ async function main() {
     if (!options.greedy) {
       dirIg.add(defaultIgnores);
     }
-
     const filteredDirs = allSubDirs.filter((dir) => {
       if (options.greedy) return true;
       const relativeDir = path.relative(process.cwd(), dir);
       if (!relativeDir) return true;
       return !dirIg.ignores(relativeDir);
     });
-
     filteredDirs.forEach((d) => console.log(`  ${d}`));
     console.log('--- End of subdirectory listing ---');
   }
 
-  // Load prefix content
+  // prefix file content
   const prefixContent = loadPrefixContent(options.prefix);
 
-  // Resolve final resource list
-  const { finalResources, directoriesScanned } = await resolveResources(options);
-  if (finalResources.length === 0) {
+  // if usingPredefined, we skip normal resource resolution
+  let finalResources = [];
+  let directoriesScanned = [];
+  if (usingPredefined) {
+    finalResources = linesFromPredefined.map((ln) => ln.trim());
+    directoriesScanned = [...new Set(finalResources.map((f) => path.dirname(f)))];
+  } else {
+    // normal resolution
+    const resolved = await resolveResources(options);
+    finalResources = resolved.finalResources;
+    directoriesScanned = resolved.directoriesScanned;
+  }
+
+  // Interactive mode addition: if there's a .thisismy.txt present, ask user if they want to load it
+  // (only if not using --predefined and user actually typed --interactive)
+  let extraPredefLines = [];
+  if (options.interactive && !usingPredefined) {
+    const localTxt = '.thisismy.txt';
+    if (fs.existsSync(localTxt)) {
+      const want = await askYesNo(`Found a local "${localTxt}". Load its lines into your selection? (y/n)`);
+      if (want) {
+        try {
+          const lines = fs.readFileSync(localTxt, 'utf8')
+            .split('\n')
+            .map((x) => x.trim())
+            .filter((x) => x.length > 0 && !x.startsWith('#'));
+          extraPredefLines = lines;
+          if (!options.silent) {
+            console.log(`Loaded ${lines.length} lines from .thisismy.txt`);
+          }
+        } catch {
+          console.log(`Error reading ${localTxt}`);
+        }
+      }
+    }
+  }
+
+  // Combine finalResources + extraPredefLines, removing duplicates
+  finalResources.push(...extraPredefLines);
+  finalResources = [...new Set(finalResources)];
+
+  // Interactive select
+  if (options.interactive) {
+    finalResources = await interactiveSelect(finalResources, options);
+    // Now ask user if they want to save the selection as .thisismy.txt
+    if (finalResources.length > 0) {
+      const wantSave = await askYesNo('Save this selection to a .thisismy.txt for future use? (y/n)');
+      if (wantSave) {
+        const name = `selection-${Date.now()}.thisismy.txt`;
+        try {
+          fs.writeFileSync(name, finalResources.join('\n'), 'utf8');
+          console.log(`Saved selection to "${name}"`);
+        } catch (err) {
+          console.log(`Error saving selection: ${err}`);
+        }
+      }
+    }
+
+    // At the end of interactive mode, ask what user wants to do with the selected files
+    const action = await askPostAction();
+    if (action === 'quit') {
+      if (!options.silent) {
+        console.log('Exiting without further processing...');
+      }
+      return;
+    } else if (action === 'copy' || action === 'file') {
+      // We continue with normal processing, but we will override copy or output
+      if (action === 'copy') {
+        options.copy = true;
+      } else if (action === 'file') {
+        // ask user for file name
+        const outName = await askInput('Enter output filename (default "out.txt"): ');
+        options.output = outName.trim() || 'out.txt';
+      }
+    } else {
+      // 'none' means no copy/no file
+      options.copy = false;
+      options.output = null;
+    }
+  }
+
+  // treeOnly => skip reading
+  if (options.treeOnly) {
     if (!options.silent) {
-      console.log('No files/URLs found after applying rules.');
+      console.log('Tree-only mode: No file content read.');
+    }
+    if (finalResources.length === 0 && !options.silent) {
+      console.log('No files/URLs found.');
+    } else {
+      const treeResult = buildTreeOutput(finalResources, options);
+      if (options.output) {
+        fs.writeFileSync(options.output, treeResult.rawTree);
+        if (!options.silent) {
+          logColored(`Output written to ${options.output}`, chalk.yellow, options);
+        }
+      }
+      if (!options.silent) {
+        console.log(treeResult.coloredTree);
+      }
+      if (options.copy) {
+        clipboardy.writeSync(treeResult.rawTree);
+        if (!options.silent) {
+          logColored('Output copied to clipboard', chalk.yellow, options);
+        }
+      }
     }
     return;
   }
 
-  if (options.recursive && !options.silent) {
-    console.log('Recursive search enabled. Directories scanned:');
-    directoriesScanned.forEach((dir) => console.log(`  ${dir}`));
-    console.log(`Found ${finalResources.length} file(s)/URL(s) in total.`);
+  // apply size limit
+  const { finalResourcesFiltered, ignoredDueToSize } = applySizeLimit(finalResources, sizeLimitBytes);
+  finalResources = finalResourcesFiltered;
+
+  if (finalResources.length === 0) {
+    if (!options.silent) {
+      console.log('No files/URLs remain after ignoring or size limit.');
+      if (ignoredDueToSize.length > 0) {
+        console.log('Ignored due to size limit:');
+        ignoredDueToSize.forEach((info) => {
+          console.log(` - ${info.filePath} (${info.sizeMB.toFixed(2)} MB)`);
+        });
+      }
+    }
+    return;
   }
 
-  // Process all resources into a single output
+  // If normal scanning used
+  if (options.recursive && !usingPredefined && !options.silent) {
+    console.log('Recursive search enabled. Directories scanned:');
+    directoriesScanned.forEach((dir) => console.log(`  ${dir}`));
+    console.log(`Found ${finalResources.length} file(s)/URL(s) total (after size filtering).`);
+  }
+
+  // process resources
   let finalOutput = await processFilesAndUrls(options, prefixContent, finalResources);
 
-  // If user requested a tree view, generate that and append it to the final output
+  // append tree if -y
   if (options.tree) {
     const treeResult = buildTreeOutput(finalResources, options);
-    // Append to final output so that -c or -o also includes the tree
     finalOutput += treeResult.rawTree;
     if (!options.silent) {
-      // Print the colored version
       console.log(treeResult.coloredTree);
     }
   }
 
-  // If the user specified output to file
+  // show ignored size
+  if (ignoredDueToSize.length > 0 && !options.silent) {
+    console.log(`\nSkipped ${ignoredDueToSize.length} file(s) due to size limit:`);
+    ignoredDueToSize.forEach((info) => {
+      console.log(` - ${info.filePath} (${info.sizeMB.toFixed(2)} MB)`);
+    });
+    console.log('');
+  }
+
+  // write output if requested
   if (options.output) {
     fs.writeFileSync(options.output, finalOutput);
     if (!options.silent) {
@@ -285,7 +410,7 @@ async function main() {
     }
   }
 
-  // If the user specified copy to clipboard, copy final output (including tree)
+  // copy if requested
   if (options.copy) {
     clipboardy.writeSync(finalOutput);
     if (!options.silent) {
@@ -293,14 +418,12 @@ async function main() {
     }
   }
 
-  // If watch mode is enabled, start watchers
+  // watch
   if (options.watch) {
     await startWatching(options, prefixContent, finalResources);
-
     if (!options.silent) {
-      console.log('Watch mode enabled. Press "x" then ENTER at any time to exit watch mode.');
+      console.log('Watch mode enabled. Press "x" then ENTER to exit watch mode.');
     }
-
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
     rl.on('line', (line) => {
       if (line.trim().toLowerCase() === 'x') {
@@ -311,14 +434,39 @@ async function main() {
       }
     });
   }
-
-  // Return final output if needed
-  return finalOutput;
 }
 
-/**
- * Backs up current options into thisismy.json if requested.
- */
+/** Ask user yes/no, return true if yes */
+async function askYesNo(promptStr) {
+  process.stdout.write(`${promptStr} `);
+  const ans = await promptUser();
+  return ans.trim().toLowerCase().startsWith('y');
+}
+
+/** Ask user for a line of input */
+async function askInput(promptStr) {
+  process.stdout.write(promptStr);
+  const ans = await promptUser();
+  return ans;
+}
+
+/** Prompt user for end-of-interactive action */
+async function askPostAction() {
+  console.log('\nWhat do you want to do with the selected files?');
+  console.log(' [1] Copy to clipboard\n [2] Write to file\n [3] None\n [x] Quit');
+  process.stdout.write('Choose 1/2/3/x: ');
+  const ans = await promptUser();
+  switch (ans.trim()) {
+    case '1': return 'copy';
+    case '2': return 'file';
+    case '3': return 'none';
+    case 'x':
+    case 'q': return 'quit';
+    default: return 'none'; // fallback
+  }
+}
+
+/** Backup current options */
 function handleBackup(options) {
   if (options.backup) {
     const backupOptions = { ...options };
@@ -327,10 +475,7 @@ function handleBackup(options) {
   }
 }
 
-/**
- * Attempt to load defaults from thisismy.json. Returns both the final merged
- * options and the loaded defaults, so we can display them in the console.
- */
+/** Load defaults from thisismy.json */
 function loadDefaults(options) {
   let loadedDefaults = {};
   if (fs.existsSync('thisismy.json')) {
@@ -344,75 +489,40 @@ function loadDefaults(options) {
   return { finalOptions, loadedDefaults };
 }
 
-/**
- * Display loaded defaults from thisismy.json if they exist
- */
+/** Display loaded defaults */
 function displayDefaultsUsed(loadedDefaults, options) {
   const defaultsStr = JSON.stringify(loadedDefaults, null, 2);
   const msg = `Using defaults from thisismy.json:\n${defaultsStr}`;
   logColored(msg, chalk.cyanBright, options);
 }
 
-/**
- * Print version from package.json
- */
+/** Print license */
+function printLicense() {
+  console.log('MIT License');
+}
+
+/** Print version from package.json */
 function printVersion() {
   const pkg = JSON.parse(fs.readFileSync('./package.json', 'utf8'));
   console.log(`thisismy ${pkg.version}`);
 }
 
-/**
- * Print a short license snippet
- */
-function printLicense() {
-  console.log('MIT License');
-}
-
-/**
- * Print usage instructions
- */
+/** Print usage */
 function printUsage() {
   const usage = commandLineUsage([
     {
       header: 'thisismy',
-      content:
-        'Aggregates file or URL content, optionally ignoring files, trimming whitespace, ' +
-        'and more.',
+      content: 'Concatenate file/URL content with various options, ignoring rules, etc. Now with -p for predefined.'
     },
     {
       header: 'Options',
-      optionList: optionDefinitions,
-    },
-    {
-      header: 'Behavior',
-      content: [
-        '- Respects `.thisismyignore` or `.gitignore` unless `-g` is used.',
-        '- If no ignore file, defaults to ignoring dotfiles & common binaries unless `-g`.',
-        '- `-t` (tiny) collapses whitespace. By default, no whitespace trimming.',
-        '- `-w` (watch) re-prompts on changes. `-r` (recursive) globs subdirectories.',
-        '- `-y` (tree) prints a tree-like view of processed files at the end.',
-        '- The final output can be copied (`-c`) or written to a file (`-o`).',
-      ],
-    },
-    {
-      header: 'Examples',
-      content: [
-        { desc: 'Read a single file', example: 'thisismy file.txt' },
-        { desc: 'Copy to clipboard', example: 'thisismy -c file.txt' },
-        { desc: 'Write to file', example: 'thisismy -o out.txt file.txt' },
-        { desc: 'Trim whitespace', example: 'thisismy -t file.txt' },
-        { desc: 'Recursive watch', example: 'thisismy -rw "**/*.js"' },
-        { desc: 'Greedy (ignore ignoring)', example: 'thisismy -g *.png' },
-        { desc: 'Print a tree view', example: 'thisismy -y ./*.js' },
-      ],
-    },
+      optionList: optionDefinitions
+    }
   ]);
   console.log(usage);
 }
 
-/**
- * Load prefix from file or literal string
- */
+/** load prefix content from file or string */
 function loadPrefixContent(prefix) {
   if (!prefix) return '';
   if (fs.existsSync(prefix)) {
@@ -421,35 +531,28 @@ function loadPrefixContent(prefix) {
   return prefix;
 }
 
-/**
- * Resolve resources (files/URLs) from user input, apply ignoring unless greedy.
- */
+/** resolve resources from user patterns, ignoring rules */
 async function resolveResources(options) {
   const inputPaths = options.file;
-  const ignoreManager = ignore();
-  let finalResources = [];
-
-  // If not greedy, load defaultIgnores + .thisismyignore or .gitignore
+  const ig = ignore();
   if (!options.greedy) {
-    ignoreManager.add(defaultIgnores);
+    ig.add(defaultIgnores);
     if (fs.existsSync('.thisismyignore')) {
-      ignoreManager.add(fs.readFileSync('.thisismyignore', 'utf8'));
+      ig.add(fs.readFileSync('.thisismyignore', 'utf8'));
     } else if (fs.existsSync('.gitignore')) {
-      ignoreManager.add(fs.readFileSync('.gitignore', 'utf8'));
+      ig.add(fs.readFileSync('.gitignore', 'utf8'));
     }
   }
 
   const allMatchedFiles = [];
   const allIgnoredFiles = [];
+  const finalResources = [];
 
   for (let pattern of inputPaths) {
     if (pattern.startsWith('http')) {
-      // Always include URLs
       finalResources.push(pattern);
       continue;
     }
-
-    // If recursive and no '**', inject
     if (options.recursive && !pattern.includes('**')) {
       if (pattern.startsWith('./')) {
         pattern = `./**/${pattern.slice(2)}`;
@@ -457,28 +560,22 @@ async function resolveResources(options) {
         pattern = `**/${pattern}`;
       }
     }
-
     const matched = globSync(pattern, { dot: true });
     allMatchedFiles.push(...matched);
   }
-
-  // Filter duplicates
   const uniqueMatched = [...new Set(allMatchedFiles)];
-
-  // Filter out directories
-  const validFiles = uniqueMatched.filter((f) => {
+  const validFiles = uniqueMatched.filter((p) => {
     try {
-      return fs.lstatSync(f).isFile();
+      return fs.lstatSync(p).isFile();
     } catch {
       return false;
     }
   });
 
-  // If not greedy, check ignore
   if (!options.greedy) {
     for (const filePath of validFiles) {
       const relative = path.relative(process.cwd(), filePath);
-      if (ignoreManager.ignores(relative)) {
+      if (ig.ignores(relative)) {
         allIgnoredFiles.push(relative);
       } else {
         finalResources.push(relative);
@@ -488,7 +585,6 @@ async function resolveResources(options) {
     finalResources.push(...validFiles.map((f) => path.relative(process.cwd(), f)));
   }
 
-  // Print which were ignored
   if (!options.greedy && !options.silent && allIgnoredFiles.length > 0) {
     console.log(chalk.magenta('Ignored files:'));
     for (const ignored of allIgnoredFiles) {
@@ -496,52 +592,137 @@ async function resolveResources(options) {
     }
   }
 
-  // Identify directories scanned
-  const directoriesScanned = new Set(
-    finalResources.filter((f) => !f.startsWith('http')).map((f) => path.dirname(f)),
-  );
-
-  return {
-    finalResources,
-    directoriesScanned: Array.from(directoriesScanned),
-  };
+  const directoriesScanned = new Set(finalResources.filter((f) => !f.startsWith('http')).map((f) => path.dirname(f)));
+  return { finalResources, directoriesScanned: [...directoriesScanned] };
 }
 
-/**
- * Orchestrate reading all resources, building a final output string, but does NOT
- * print the tree here (that is handled separately). Returns a single combined string.
- */
+/** Interactive selection of matched resources */
+async function interactiveSelect(resources, options) {
+  if (!resources.length) return [];
+  if (!options.silent) {
+    console.log(`Interactive mode: ${resources.length} total. Enter to include, "s" skip, "q" quit.\n`);
+  }
+  const selected = [];
+  let i = 0;
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+
+  const promptLoop = (resolve) => {
+    if (i >= resources.length) {
+      rl.close();
+      resolve();
+      return;
+    }
+    const file = resources[i];
+    process.stdout.write(`Include "${file}"? [ENTER=s / q]> `);
+    rl.once('line', (ans) => {
+      const low = ans.trim().toLowerCase();
+      if (low === 's') {
+        // skip
+      } else if (low === 'q') {
+        // quit
+        i = resources.length;
+      } else {
+        // include
+        selected.push(file);
+      }
+      i++;
+      promptLoop(resolve);
+    });
+  };
+  await new Promise((resolve) => {
+    promptLoop(resolve);
+  });
+  return selected;
+}
+
+/** parse size limit */
+function parseSizeLimit(limitArg) {
+  if (!limitArg) {
+    return { bytes: 1024 * 1024 }; // 1mb
+  }
+  if (limitArg.toLowerCase() === 'no') {
+    return { bytes: undefined };
+  }
+  const regex = /^(\d+(?:\.\d+)?)(kb|mb)?$/i;
+  const match = limitArg.match(regex);
+  if (!match) {
+    console.error(`Invalid size limit "${limitArg}", defaulting to 1MB`);
+    return { bytes: 1024 * 1024 };
+  }
+  const val = parseFloat(match[1]);
+  const unit = match[2] ? match[2].toLowerCase() : 'mb';
+  if (unit === 'kb') {
+    return { bytes: Math.round(val * 1024) };
+  }
+  // default mb
+  return { bytes: Math.round(val * 1024 * 1024) };
+}
+
+/** skip big files if limit is set */
+function applySizeLimit(filePaths, sizeLimitBytes) {
+  if (sizeLimitBytes === undefined) {
+    return { finalResourcesFiltered: filePaths, ignoredDueToSize: [] };
+  }
+  const finalResourcesFiltered = [];
+  const ignoredDueToSize = [];
+
+  for (const file of filePaths) {
+    if (file.startsWith('http')) {
+      finalResourcesFiltered.push(file);
+      continue;
+    }
+    try {
+      const st = fs.statSync(file);
+      if (st.size > sizeLimitBytes) {
+        ignoredDueToSize.push({
+          filePath: file,
+          sizeMB: st.size / (1024 * 1024)
+        });
+      } else {
+        finalResourcesFiltered.push(file);
+      }
+    } catch {}
+  }
+  return { finalResourcesFiltered, ignoredDueToSize };
+}
+
+/** orchestrate final reading+formatting */
 async function processFilesAndUrls(options, prefixContent, resources) {
-  const outputsRaw = [];
-
-  for (const resource of resources) {
-    const rawContent = await getRawResourceContent(resource);
-    const { raw: rawFinal, colored: coloredFinal } = transformContent(
-      rawContent,
-      resource,
-      prefixContent,
-      options,
-    );
-    outputsRaw.push(rawFinal);
-
-    // Print colored to console (only if not silent)
-    if (!options.silent) {
-      console.log(coloredFinal);
+  const entries = [];
+  for (const r of resources) {
+    const raw = await getRawResourceContent(r);
+    const e = transformContent(raw, r, prefixContent, options);
+    entries.push(e);
+  }
+  if (options.stats) {
+    for (const e of entries) {
+      if (!e.isURL) {
+        try {
+          const st = fs.statSync(e.resourceName);
+          e.size = st.size;
+          e.mtime = st.mtime;
+          e.lineCount = (e.rawContent.match(/\n/g) || []).length + 1;
+        } catch {}
+      }
     }
   }
-
-  // Combine final raw
-  return outputsRaw.join('');
+  const fmt = (options.format || 'md').toLowerCase();
+  switch (fmt) {
+    case 'txt':
+      return formatTxt(entries, options);
+    case 'json':
+      return formatJson(entries);
+    case 'html':
+      return formatHtml(entries, options);
+    default:
+      return formatMarkdown(entries, options);
+  }
 }
 
-/**
- * Return raw content from either a URL or file (no transformations).
- */
 async function getRawResourceContent(resource) {
   if (resource.startsWith('http')) {
     return await fetchURL(resource);
   }
-  // local file
   try {
     return fs.readFileSync(resource, 'utf8');
   } catch {
@@ -549,68 +730,260 @@ async function getRawResourceContent(resource) {
   }
 }
 
-/**
- * Convert raw resource content to a final form:
- *  - Add prefix
- *  - Add header/footer
- *  - Optionally trim whitespace if -t
- *  - Return both raw (no color) and colored versions
- */
 function transformContent(raw, resourceName, prefixContent, options) {
-  // Prepare standard header/footer
   const now = new Date();
   const dateStr = formatDate(now);
-
-  // Slightly different for URLs vs files
   const isURL = resourceName.startsWith('http');
-  const header = `\n\nThis is the ${isURL ? 'current' : 'my current'} ${resourceName} at ${dateStr}\n\n`;
-  const footer = `\n\nThis is the end of ${resourceName}\n\n`;
-
-  // If -t, we do whitespace collapse
   let content = raw;
   if (options.tiny) {
     content = content.replace(/\s+/g, ' ').trim();
   }
+  const header = `\n\nThis is the ${isURL ? 'current' : 'my current'} ${resourceName} at ${dateStr}\n\n`;
+  const footer = `\n\nThis is the end of ${resourceName}\n\n`;
 
-  // Build raw version
-  const rawVersion = `${prefixContent}${header}${content}${footer}`;
-
-  // Build colored version
-  const coloredPrefix = colorize(prefixContent, chalk.green, options);
-  const coloredHeader = colorize(header, chalk.blue, options);
-  const coloredContent = colorize(content, chalk.green, options);
-  const coloredFooter = colorize(footer, chalk.blue, options);
-
+  const finalRaw = prefixContent + header + content + footer;
   return {
-    raw: rawVersion,
-    colored: coloredPrefix + coloredHeader + coloredContent + coloredFooter,
+    resourceName,
+    isURL,
+    rawContent: content,
+    prefixContent,
+    header,
+    footer,
+    finalRaw
   };
 }
 
-/**
- * Colorize a string for console, if allowed (no silent, noColor).
- */
-function colorize(str, colorFunc, options) {
-  if (options.silent) return str;
-  if (options.noColor) return str;
-  return colorFunc(str);
+/** format markdown */
+function formatMarkdown(entries, options) {
+  let out = '';
+  for (const e of entries) {
+    if (!options.silent) {
+      console.log(
+        colorize(e.prefixContent, chalk.green, options) +
+        colorize(e.header, chalk.blue, options) +
+        colorize(e.rawContent, chalk.green, options) +
+        colorize(e.footer, chalk.blue, options)
+      );
+    }
+    out += e.finalRaw;
+    if (options.stats && !e.isURL && typeof e.size === 'number') {
+      const sizeKB = (e.size / 1024).toFixed(2);
+      out += `\n[Stats] lines=${e.lineCount || '?'}, size=${sizeKB}KB, mod=${e.mtime || '?'}\n`;
+    }
+  }
+  return out;
 }
 
-/**
- * Log a message with optional color
- */
-function logColored(message, colorFunc, options) {
-  if (options.silent) return;
-  if (options.noColor) {
-    console.log(message);
-  } else {
-    console.log(colorFunc(message));
+/** format txt */
+function formatTxt(entries, options) {
+  let out = '';
+  for (const e of entries) {
+    if (!options.silent) {
+      console.log(`${e.resourceName}:`);
+      console.log(e.rawContent);
+    }
+    out += `File: ${e.resourceName}\n${e.rawContent}\n`;
+    if (options.stats && !e.isURL && typeof e.size === 'number') {
+      const sizeKB = (e.size / 1024).toFixed(2);
+      out += `[Stats] lines=${e.lineCount || '?'} size=${sizeKB}KB mod=${e.mtime || '?'}\n`;
+    }
+    out += '\n';
+  }
+  return out;
+}
+
+/** format json */
+function formatJson(entries) {
+  const arr = entries.map((e) => {
+    const o = {
+      resource: e.resourceName,
+      content: e.rawContent
+    };
+    if (typeof e.size === 'number') {
+      o.sizeBytes = e.size;
+    }
+    if (typeof e.lineCount === 'number') {
+      o.lineCount = e.lineCount;
+    }
+    if (e.mtime) {
+      o.modifiedTime = e.mtime;
+    }
+    return o;
+  });
+  return JSON.stringify(arr, null, 2);
+}
+
+/** format html */
+function formatHtml(entries, options) {
+  let html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>thisismy Output</title></head><body>\n';
+  for (const e of entries) {
+    html += `<h2>${escapeHtml(e.resourceName)}</h2>\n<pre>\n${escapeHtml(e.rawContent)}\n</pre>\n`;
+    if (options.stats && !e.isURL && typeof e.size === 'number') {
+      const sizeKB = (e.size / 1024).toFixed(2);
+      html += `<p>[Stats] lines=${e.lineCount || '?'}, size=${sizeKB}KB, mod=${e.mtime || '?'} </p>\n`;
+    }
+  }
+  html += '</body></html>\n';
+  return html;
+}
+
+function escapeHtml(str) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+/** watchers */
+async function startWatching(options, prefixContent, resources) {
+  const intervalMs = options.interval * 60000;
+  const prevContentMap = new Map();
+
+  for (const r of resources) {
+    const initial = await getRawResourceContent(r);
+    prevContentMap.set(r, hashContent(initial));
+    if (!r.startsWith('http')) {
+      const watcher = chokidar.watch(r, { ignoreInitial: true, persistent: true });
+      watcher.on('change', async () => {
+        await handleChange(r, prevContentMap, options, prefixContent, resources);
+      });
+      watcher.on('error', (err) => {
+        if (!options.silent) {
+          console.error('Watcher error:', err);
+        }
+      });
+    }
+  }
+  const urlResources = resources.filter((x) => x.startsWith('http'));
+  if (urlResources.length > 0) {
+    setInterval(async () => {
+      for (const u of urlResources) {
+        await handleChange(u, prevContentMap, options, prefixContent, resources);
+      }
+    }, intervalMs);
   }
 }
 
-/**
- * Format date as dd.mm.yyyy hh:mm:ss
- */
+/** on file change re-run */
+async function handleChange(r, prevMap, options, prefixContent, allResources) {
+  const newContent = await getRawResourceContent(r);
+  const newHash = hashContent(newContent);
+  const oldHash = prevMap.get(r);
+  if (newHash !== oldHash) {
+    prevMap.set(r, newHash);
+    await askForReRun([r], options, prefixContent, allResources);
+  }
+}
+
+/** ask for re-run if changed */
+async function askForReRun(changed, options, prefixContent, allResources) {
+  if (!changed.length) return;
+  if (!options.silent) {
+    console.log('\nThese resources changed:');
+    changed.forEach((c) => console.log(c));
+    console.log('Re-run now? [y/n/x]');
+  }
+  const ans = await promptUser();
+  if (ans.toLowerCase() === 'y') {
+    let newOutput = await processFilesAndUrls(options, prefixContent, allResources);
+    if (options.tree) {
+      const treeResult = buildTreeOutput(allResources, options);
+      newOutput += treeResult.rawTree;
+      if (!options.silent) {
+        console.log(treeResult.coloredTree);
+      }
+    }
+    if (options.output) {
+      fs.writeFileSync(options.output, newOutput);
+      if (!options.silent) {
+        logColored(`Output written to ${options.output}`, chalk.yellow, options);
+      }
+    }
+    if (options.copy) {
+      clipboardy.writeSync(newOutput);
+      if (!options.silent) {
+        logColored('Output copied to clipboard', chalk.yellow, options);
+      }
+    }
+  } else if (ans.toLowerCase() === 'x') {
+    process.exit(0);
+  }
+}
+
+function promptUser() {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    rl.question('', (answer) => {
+      rl.close();
+      resolve(answer);
+    });
+  });
+}
+
+function hashContent(str) {
+  return crypto.createHash('sha256').update(str || '').digest('hex');
+}
+
+/** build directory tree output */
+function buildTreeOutput(filePaths, options) {
+  const rawTitle = '\n--- Tree View of Processed Files ---\n';
+  const coloredTitle = colorize(rawTitle, chalk.cyanBright, options);
+  const absPaths = filePaths.filter((f) => !f.startsWith('http')).map((f) => path.resolve(process.cwd(), f));
+  const treeObj = buildTree(absPaths);
+  const { rawTree, coloredTree } = getTreeStrings(treeObj, options, '');
+  return {
+    rawTree: rawTitle + rawTree + '\n',
+    coloredTree: coloredTitle + coloredTree + '\n'
+  };
+}
+
+function buildTree(files) {
+  const root = {};
+  for (const f of files) {
+    const parts = f.split(path.sep);
+    let current = root;
+    for (const p of parts) {
+      if (!current[p]) current[p] = {};
+      current = current[p];
+    }
+  }
+  return root;
+}
+
+function getTreeStrings(node, options, prefix) {
+  let rawTree = '';
+  let coloredTree = '';
+  const keys = Object.keys(node).sort();
+  keys.forEach((key, idx) => {
+    const isLast = idx === keys.length - 1;
+    const connector = isLast ? '└── ' : '├── ';
+    rawTree += `${prefix}${connector}${key}\n`;
+    coloredTree += prefix +
+      colorize(connector, chalk.green, options) +
+      colorize(key, chalk.green, options) + '\n';
+    const nextPrefix = prefix + (isLast ? '    ' : '│   ');
+    const sub = getTreeStrings(node[key], options, nextPrefix);
+    rawTree += sub.rawTree;
+    coloredTree += sub.coloredTree;
+  });
+  return { rawTree, coloredTree };
+}
+
+function colorize(str, colorFunc, options) {
+  if (options.silent || options.noColor) return str;
+  return colorFunc(str);
+}
+
+function logColored(msg, colorFunc, options) {
+  if (!options.silent) {
+    if (options.noColor) {
+      console.log(msg);
+    } else {
+      console.log(colorFunc(msg));
+    }
+  }
+}
+
 function formatDate(d) {
   const dd = String(d.getDate()).padStart(2, '0');
   const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -621,26 +994,23 @@ function formatDate(d) {
   return `${dd}.${mm}.${yyyy} ${hh}:${min}:${ss}`;
 }
 
-/**
- * Fetch URL content, using plain fetch first, then fallback to Puppeteer if needed.
- */
+/** fetch with fallback to puppeteer */
 async function fetchURL(url, tryJS = false) {
   if (!tryJS) {
     try {
-      const response = await fetch(url, fetchOptions);
-      const html = await response.text();
-      const content = parseHTMLWithReadability(html);
-      if (!content) {
-        // fallback
+      const resp = await fetch(url, fetchOptions);
+      const html = await resp.text();
+      const parsed = parseHTMLWithReadability(html);
+      if (!parsed) {
         return fetchURL(url, true);
       }
-      return content;
+      return parsed;
     } catch (err) {
       console.error(err);
       return '';
     }
   }
-  // fallback to puppeteer
+  // fallback puppeteer
   let browser;
   try {
     browser = await puppeteer.launch();
@@ -659,201 +1029,17 @@ async function fetchURL(url, tryJS = false) {
   }
 }
 
-/**
- * Parse HTML using JSDOM + Readability
- */
 function parseHTMLWithReadability(html) {
-  const doc = new JSDOM(html);
-  const reader = new Readability(doc.window.document);
+  const dom = new JSDOM(html);
+  const reader = new Readability(dom.window.document);
   const article = reader.parse();
   if (!article) return null;
-
   let { textContent } = article;
   if (!textContent) textContent = article.content;
   if (!textContent) textContent = html;
   return textContent;
 }
 
-/**
- * Start watching local files or re-checking URLs on intervals,
- * re-run on changes if user says yes.
- */
-async function startWatching(options, prefixContent, resources) {
-  const intervalMs = options.interval * 60_000;
-  const prevContentMap = new Map();
-
-  // Initialize watchers
-  for (const res of resources) {
-    const initial = await getRawResourceContent(res);
-    prevContentMap.set(res, hashContent(initial));
-
-    if (!res.startsWith('http')) {
-      const watcher = chokidar.watch(res, { ignoreInitial: true, persistent: true });
-      watcher.on('change', async () => {
-        await handleChange(res, prevContentMap, options, prefixContent, resources);
-      });
-      watcher.on('error', (err) => {
-        if (!options.silent) {
-          console.error(`Watcher error: ${err}`);
-        }
-      });
-    }
-  }
-
-  // For URLs
-  const urlResources = resources.filter((r) => r.startsWith('http'));
-  if (urlResources.length > 0) {
-    setInterval(async () => {
-      for (const urlRes of urlResources) {
-        await handleChange(urlRes, prevContentMap, options, prefixContent, resources);
-      }
-    }, intervalMs);
-  }
-}
-
-/**
- * On change, compare new hash vs old. If changed, prompt to re-run.
- */
-async function handleChange(resource, prevContentMap, options, prefixContent, allResources) {
-  const newContent = await getRawResourceContent(resource);
-  const newHash = hashContent(newContent);
-  const oldHash = prevContentMap.get(resource);
-
-  if (newHash !== oldHash) {
-    prevContentMap.set(resource, newHash);
-    await askForReRun([resource], options, prefixContent, allResources);
-  }
-}
-
-/**
- * Ask user if they want to re-run after changes. If yes, re-process and re-append tree if needed.
- */
-async function askForReRun(changedResources, options, prefixContent, allResources) {
-  if (changedResources.length === 0) return;
-  if (!options.silent) {
-    console.log('\nThese resources were changed:');
-    changedResources.forEach((res) => console.log(res));
-    console.log('Do you want to re-run (copy + trim, etc.)? [y/n/x]');
-  }
-
-  const answer = await promptUser();
-  if (answer.toLowerCase() === 'y') {
-    let newFinalOutput = await processFilesAndUrls(options, prefixContent, allResources);
-    if (options.tree) {
-      const treeResult = buildTreeOutput(allResources, options);
-      newFinalOutput += treeResult.rawTree;
-      if (!options.silent) {
-        console.log(treeResult.coloredTree);
-      }
-    }
-
-    // Write to file if set
-    if (options.output) {
-      fs.writeFileSync(options.output, newFinalOutput);
-      if (!options.silent) {
-        logColored(`Output written to ${options.output}`, chalk.yellow, options);
-      }
-    }
-
-    // Copy if set
-    if (options.copy) {
-      clipboardy.writeSync(newFinalOutput);
-      if (!options.silent) {
-        logColored('Output copied to clipboard', chalk.yellow, options);
-      }
-    }
-  } else if (answer.toLowerCase() === 'x') {
-    process.exit(0);
-  }
-}
-
-/**
- * Basic stdin prompt
- */
-function promptUser() {
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  return new Promise((resolve) => {
-    rl.question('', (ans) => {
-      rl.close();
-      resolve(ans);
-    });
-  });
-}
-
-/**
- * Hash content with sha256
- */
-function hashContent(str) {
-  return crypto.createHash('sha256').update(str || '').digest('hex');
-}
-
-/**
- * Build a tree (raw + colored) for the given file paths (excluding URLs).
- */
-function buildTreeOutput(filePaths, options) {
-  const rawTitle = '\n--- Tree View of Processed Files ---\n';
-  const coloredTitle = colorize(rawTitle, chalk.cyanBright, options);
-
-  // Convert to absolute, ignoring URLs
-  const absPaths = filePaths
-    .filter((f) => !f.startsWith('http'))
-    .map((f) => path.resolve(process.cwd(), f));
-
-  // Build and print tree
-  const treeObject = buildTree(absPaths);
-  const { rawTree, coloredTree } = getTreeStrings(treeObject, options, '');
-
-  return {
-    rawTree: rawTitle + rawTree + '\n',
-    coloredTree: coloredTitle + coloredTree + '\n',
-  };
-}
-
-/**
- * Build a nested object representing directory structure
- */
-function buildTree(files) {
-  const root = {};
-  for (const f of files) {
-    const parts = f.split(path.sep);
-    let current = root;
-    for (const p of parts) {
-      if (!current[p]) {
-        current[p] = {};
-      }
-      current = current[p];
-    }
-  }
-  return root;
-}
-
-/**
- * Recursively produce raw and colored strings for the tree
- */
-function getTreeStrings(node, options, prefix) {
-  let rawTree = '';
-  let coloredTree = '';
-
-  const keys = Object.keys(node).sort();
-  keys.forEach((key, index) => {
-    const isLast = index === keys.length - 1;
-    const connector = isLast ? '└── ' : '├── ';
-
-    rawTree += `${prefix}${connector}${key}\n`;
-    coloredTree += `${prefix}${colorize(connector, chalk.green, options)}${colorize(key, chalk.green, options)}\n`;
-
-    const nextPrefix = prefix + (isLast ? '    ' : '│   ');
-    const sub = getTreeStrings(node[key], options, nextPrefix);
-    rawTree += sub.rawTree;
-    coloredTree += sub.coloredTree;
-  });
-
-  return { rawTree, coloredTree };
-}
-
-/**
- * Run main
- */
 (async () => {
   try {
     await main();

@@ -1,6 +1,6 @@
 {
   "name": "thisismy",
-  "version": "1.2.3",
+  "version": "1.4.0",
   "description": "Prints the content of files with a prefix",
   "main": "thisismy.js",
   "type": "module",
@@ -8,7 +8,7 @@
     "thisismy": "thisismy.js"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "mocha"
   },
   "author": "",
   "license": "ISC",
@@ -25,5 +25,9 @@
     "psl": "^1.15.0",
     "puppeteer": "^24.1.1",
     "xmldom": "^0.6.0"
+  },
+  "devDependencies": {
+    "chai": "^4.5.0",
+    "mocha": "^10.8.2"
   }
 }
