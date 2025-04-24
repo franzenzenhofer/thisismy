@@ -534,25 +534,38 @@ function loadPrefixContent(prefix) {
 /** resolve resources from user patterns, ignoring rules */
 async function resolveResources(options) {
   const inputPaths = options.file;
-  const ig = ignore();
+  const ig = ignore(); // Re-introduce the ignore instance
+  let globIgnorePatterns = []; // Basic patterns for globSync
+
+  // Load all ignore patterns into the 'ignore' instance if not greedy
   if (!options.greedy) {
     ig.add(defaultIgnores);
+    // Define a minimal set for globSync to prevent deep recursion issues
+    globIgnorePatterns = defaultIgnores.filter(p => p.includes('node_modules') || p.includes('**/.*') || p.startsWith('.*'));
+
+    const loadIgnores = (filePath) => {
+      if (fs.existsSync(filePath)) {
+        ig.add(fs.readFileSync(filePath, 'utf8'));
+      }
+    };
+
     if (fs.existsSync('.thisismyignore')) {
-      ig.add(fs.readFileSync('.thisismyignore', 'utf8'));
+      loadIgnores('.thisismyignore');
     } else if (fs.existsSync('.gitignore')) {
-      ig.add(fs.readFileSync('.gitignore', 'utf8'));
+      loadIgnores('.gitignore');
     }
   }
 
   const allMatchedFiles = [];
-  const allIgnoredFiles = [];
-  const finalResources = [];
+  const finalResourcesInput = []; // To collect URLs separately
+  const allIgnoredFiles = []; // To log ignored files
 
   for (let pattern of inputPaths) {
     if (pattern.startsWith('http')) {
-      finalResources.push(pattern);
+      finalResourcesInput.push(pattern);
       continue;
     }
+
     if (options.recursive && !pattern.includes('**')) {
       if (pattern.startsWith('./')) {
         pattern = `./**/${pattern.slice(2)}`;
@@ -560,40 +573,70 @@ async function resolveResources(options) {
         pattern = `**/${pattern}`;
       }
     }
-    const matched = globSync(pattern, { dot: true });
-    allMatchedFiles.push(...matched);
-  }
-  const uniqueMatched = [...new Set(allMatchedFiles)];
-  const validFiles = uniqueMatched.filter((p) => {
-    try {
-      return fs.lstatSync(p).isFile();
-    } catch {
-      return false;
-    }
-  });
 
-  if (!options.greedy) {
-    for (const filePath of validFiles) {
-      const relative = path.relative(process.cwd(), filePath);
-      if (ig.ignores(relative)) {
-        allIgnoredFiles.push(relative);
-      } else {
-        finalResources.push(relative);
+    // Use globSync with minimal ignores
+    const globOptions = {
+      dot: true,
+      ignore: options.greedy ? [] : globIgnorePatterns,
+      follow: false,
+    };
+
+    try {
+      const matched = globSync(pattern, globOptions);
+      allMatchedFiles.push(...matched);
+    } catch (err) {
+       if (!options.silent) {
+           console.warn(chalk.yellow(`Warning during globbing pattern "${pattern}": ${err.message}`));
+       }
+    }
+  }
+
+  // Filter results: Check ignore rules *before* lstatSync
+  const finalResources = new Set(finalResourcesInput); // Start with URLs
+  const directoriesScanned = new Set();
+  const uniqueMatchedFiles = [...new Set(allMatchedFiles)];
+
+  for (const p of uniqueMatchedFiles) {
+    const relativePath = path.relative(process.cwd(), p);
+    // Skip empty paths that might result from relative(cwd, cwd)
+    if (!relativePath) continue;
+
+    // Filter with 'ignore' library FIRST
+    if (!options.greedy && ig.ignores(relativePath)) {
+      allIgnoredFiles.push(relativePath);
+      continue; // Skip ignored files before calling lstatSync
+    }
+
+    // Only call lstatSync for non-ignored paths
+    try {
+      const stats = fs.lstatSync(p); // Use original path `p` for lstatSync
+      if (stats.isFile()) {
+        finalResources.add(relativePath);
+        const dirname = path.dirname(relativePath);
+        if (dirname && dirname !== '.') {
+          directoriesScanned.add(dirname);
+        } else if (!dirname || dirname === '.') {
+          directoriesScanned.add('.');
+        }
+      }
+      // Ignore directories found by glob
+    } catch (err) {
+      // Ignore lstatSync errors (permissions, broken links)
+      if (options.debug && !options.silent) {
+        console.warn(chalk.yellow(`Skipping ${p} during file check: ${err.message}`));
       }
     }
-  } else {
-    finalResources.push(...validFiles.map((f) => path.relative(process.cwd(), f)));
   }
 
+  // Log ignored files if needed
   if (!options.greedy && !options.silent && allIgnoredFiles.length > 0) {
-    console.log(chalk.magenta('Ignored files:'));
+    logColored('Ignored files (based on rules):', chalk.magenta, options);
     for (const ignored of allIgnoredFiles) {
-      console.log(`  ${chalk.magenta(ignored)}`);
+      console.log(`  ${colorize(ignored, chalk.magenta, options)}`);
     }
   }
 
-  const directoriesScanned = new Set(finalResources.filter((f) => !f.startsWith('http')).map((f) => path.dirname(f)));
-  return { finalResources, directoriesScanned: [...directoriesScanned] };
+  return { finalResources: [...finalResources], directoriesScanned: [...directoriesScanned] };
 }
 
 /** Interactive selection of matched resources */
